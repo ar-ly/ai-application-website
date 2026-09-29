@@ -1,0 +1,776 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>贪吃蛇 · 暖阳版</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg-page: #faf7f2;
+    --bg-card: #fffdf9;
+    --bg-cell: #fdf9f3;
+    --border-soft: #efe6da;
+    --border-mid: #e6dacb;
+    --accent: #d97706;
+    --accent-light: #f59e0b;
+    --accent-soft: #fde9c9;
+    --text-main: #3f3428;
+    --text-dim: #8a7a68;
+    --food: #ef6b5a;
+    --shadow-card: 0 18px 44px rgba(180, 150, 110, 0.16);
+    --shadow-btn: 0 8px 20px rgba(217, 119, 6, 0.28);
+  }
+
+  body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    background: radial-gradient(circle at 18% 8%, #fff7ea 0%, #faf7f2 52%, #f4eee4 100%);
+    color: var(--text-main);
+  }
+
+  .app {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 26px;
+    align-items: flex-start;
+    justify-content: center;
+    width: 100%;
+    max-width: 900px;
+  }
+
+  .game-card {
+    position: relative;
+    background: var(--bg-card);
+    border-radius: 24px;
+    padding: 18px;
+    box-shadow: var(--shadow-card);
+    border: 1px solid var(--border-soft);
+  }
+
+  .topbar { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px 2px 14px; }
+
+  .chip {
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid #f6d9a6;
+    border-radius: 999px;
+    padding: 7px 15px;
+    cursor: pointer;
+    transition: transform 0.15s ease, background 0.2s ease, box-shadow 0.2s ease;
+  }
+  .chip:hover { background: #fbe0b6; transform: translateY(-1px); box-shadow: 0 6px 14px rgba(217, 119, 6, 0.16); }
+  .chip:active { transform: translateY(0) scale(0.97); }
+
+  .scoreboard {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 6px 14px;
+    gap: 18px;
+  }
+  .score-item { display: flex; flex-direction: column; gap: 2px; }
+  .score-label { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-dim); }
+  .score-value { font-size: 24px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .best .score-value { color: #b45309; }
+
+  .canvas-wrap {
+    position: relative;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid var(--border-mid);
+    background: var(--bg-cell);
+  }
+  canvas { display: block; background: var(--bg-cell); width: 100%; height: auto; touch-action: none; }
+
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    text-align: center;
+    padding: 24px;
+    background: rgba(255, 251, 244, 0.92);
+    backdrop-filter: blur(4px);
+    transition: opacity 0.25s ease;
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  .overlay h2 { font-size: 25px; font-weight: 700; letter-spacing: 0.02em; color: #5a4632; }
+  .overlay p { font-size: 14px; color: var(--text-dim); line-height: 1.65; max-width: 290px; }
+
+  .btn {
+    margin-top: 4px;
+    padding: 11px 30px;
+    font-size: 15px;
+    font-weight: 600;
+    font-family: inherit;
+    color: #fffdf8;
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+    box-shadow: var(--shadow-btn);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .btn:hover { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(217, 119, 6, 0.36); }
+  .btn:active { transform: translateY(0) scale(0.97); }
+
+  .control-bar {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    padding: 14px 2px 2px;
+  }
+  .ctrl-btn {
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 12px 6px;
+    border-radius: 14px;
+    border: 1px solid var(--border-mid);
+    background: #fff8ed;
+    color: #6b573f;
+    cursor: pointer;
+    transition: transform 0.14s ease, box-shadow 0.18s ease, background 0.18s ease, color 0.18s ease, opacity 0.18s ease;
+    box-shadow: 0 3px 0 #ecdfcd;
+    user-select: none;
+  }
+  .ctrl-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    background: var(--accent-soft);
+    color: var(--accent);
+    box-shadow: 0 7px 16px rgba(217, 119, 6, 0.18);
+  }
+  .ctrl-btn:active:not(:disabled) { transform: translateY(0) scale(0.97); box-shadow: 0 2px 0 #ecdfcd; }
+  .ctrl-btn.primary:not(:disabled) {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: #fffdf8;
+    border-color: transparent;
+    box-shadow: var(--shadow-btn);
+  }
+  .ctrl-btn.primary:hover:not(:disabled) { color: #fffdf8; background: linear-gradient(135deg, #fbbf24, #d97706); }
+  .ctrl-btn:disabled {
+    opacity: 0.42;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+    filter: grayscale(0.35);
+  }
+
+  .side { width: 280px; display: flex; flex-direction: column; gap: 16px; }
+  .panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: 20px;
+    padding: 20px 22px;
+    box-shadow: 0 12px 30px rgba(180, 150, 110, 0.12);
+  }
+  .panel h1 { font-size: 22px; font-weight: 700; letter-spacing: 0.02em; margin-bottom: 6px; color: #4a3b2a; }
+  .panel h1 span { color: var(--accent); }
+  .panel-sub { font-size: 13px; color: var(--text-dim); line-height: 1.65; }
+  .panel h3 { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 14px; }
+
+  .speed-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .speed-row label { font-size: 13px; color: var(--text-dim); }
+  input[type="range"] { flex: 1; accent-color: var(--accent); cursor: pointer; }
+  .speed-val { font-size: 13px; font-weight: 700; color: var(--accent); min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
+
+  .state-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #6b573f;
+    background: #fff8ed;
+    border: 1px solid var(--border-mid);
+    border-radius: 999px;
+    padding: 6px 14px;
+    margin-top: 14px;
+  }
+  .state-dot { width: 8px; height: 8px; border-radius: 50%; background: #c9b79c; transition: background 0.2s ease; }
+  .state-badge[data-state="running"] .state-dot { background: #22a06b; }
+  .state-badge[data-state="paused"] .state-dot { background: #f59e0b; }
+  .state-badge[data-state="over"] .state-dot { background: #ef6b5a; }
+
+  .modal-mask {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(90, 70, 45, 0.28);
+    backdrop-filter: blur(3px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
+    z-index: 50;
+  }
+  .modal-mask.open { opacity: 1; pointer-events: auto; }
+  .modal {
+    width: min(100%, 420px);
+    max-height: 84vh;
+    overflow-y: auto;
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: 22px;
+    padding: 26px 26px 24px;
+    box-shadow: 0 26px 60px rgba(140, 110, 70, 0.28);
+    transform: translateY(14px) scale(0.97);
+    transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.3, 1);
+  }
+  .modal-mask.open .modal { transform: translateY(0) scale(1); }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  .modal-head h2 { font-size: 19px; font-weight: 700; color: #4a3b2a; }
+  .close-btn {
+    flex: 0 0 auto;
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    font-size: 17px;
+    line-height: 1;
+    color: var(--text-dim);
+    background: #fdf4e7;
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease;
+  }
+  .close-btn:hover { background: var(--accent-soft); color: var(--accent); }
+  .modal-body { font-size: 14px; line-height: 1.75; color: #5f5040; }
+  .modal-body p + p { margin-top: 10px; }
+
+  .rule-list { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+  .rule-list li { display: flex; gap: 12px; font-size: 13.5px; line-height: 1.6; color: #5f5040; }
+  .rule-list .dot {
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid #f6d9a6;
+  }
+  .key-inline {
+    display: inline-block;
+    padding: 1px 8px;
+    margin: 0 1px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #6b573f;
+    background: #fff8ed;
+    border: 1px solid var(--border-mid);
+    border-radius: 7px;
+  }
+
+  @media (max-width: 720px) {
+    .side { width: min(100%, 460px); }
+    .game-card { width: min(100%, 460px); }
+    .control-bar { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <div class="game-card">
+      <div class="topbar">
+        <button class="chip" data-modal="intro">游戏介绍</button>
+        <button class="chip" data-modal="rules">玩法规则</button>
+        <button class="chip" data-modal="controls">操作方式</button>
+      </div>
+
+      <div class="scoreboard">
+        <div class="score-item">
+          <span class="score-label">得分</span>
+          <span class="score-value" id="score">0</span>
+        </div>
+        <div class="score-item best" style="align-items:flex-end">
+          <span class="score-label">最高分</span>
+          <span class="score-value" id="best">0</span>
+        </div>
+      </div>
+
+      <div class="canvas-wrap">
+        <canvas id="board" width="480" height="480"></canvas>
+        <div class="overlay" id="overlay">
+          <h2 id="overlayTitle">贪吃蛇</h2>
+          <p id="overlayText">吃掉果实让蛇变长，别撞墙也别咬到自己。</p>
+          <button class="btn" id="overlayBtn">开始游戏</button>
+        </div>
+      </div>
+
+      <div class="control-bar">
+        <button class="ctrl-btn primary" id="btnStart">开始游戏</button>
+        <button class="ctrl-btn" id="btnPause">暂停游戏</button>
+        <button class="ctrl-btn" id="btnResume">继续游戏</button>
+        <button class="ctrl-btn" id="btnNew">新一局</button>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="panel">
+        <h1>贪吃<span>蛇</span></h1>
+        <p class="panel-sub">经典街机玩法，用方向键控制小蛇不断成长，挑战你的最高分。</p>
+        <div class="state-badge" id="stateBadge" data-state="idle">
+          <span class="state-dot"></span>
+          <span id="stateText">未开始</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>游戏速度</h3>
+        <div class="speed-row">
+          <label for="speed">慢</label>
+          <input type="range" id="speed" min="1" max="10" value="5">
+          <label for="speed">快</label>
+          <span class="speed-val" id="speedVal">5</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-mask" id="modalMask">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2 id="modalTitle">标题</h2>
+        <button class="close-btn" id="modalClose" aria-label="关闭">✕</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ============ 安全存储（内存兜底） ============ */
+  var memoryStore = {};
+  function safeGet(key) {
+    try {
+      var v = window.localStorage.getItem(key);
+      return v === null ? (key in memoryStore ? memoryStore[key] : null) : v;
+    } catch (e) {
+      return key in memoryStore ? memoryStore[key] : null;
+    }
+  }
+  function safeSet(key, value) {
+    memoryStore[key] = String(value);
+    try { window.localStorage.setItem(key, value); } catch (e) { /* 内存兜底 */ }
+  }
+
+  /* ============ DOM ============ */
+  var canvas = document.getElementById('board');
+  var ctx = canvas.getContext('2d');
+  var scoreEl = document.getElementById('score');
+  var bestEl = document.getElementById('best');
+  var overlay = document.getElementById('overlay');
+  var overlayTitle = document.getElementById('overlayTitle');
+  var overlayText = document.getElementById('overlayText');
+  var overlayBtn = document.getElementById('overlayBtn');
+  var speedInput = document.getElementById('speed');
+  var speedVal = document.getElementById('speedVal');
+
+  var btnStart = document.getElementById('btnStart');
+  var btnPause = document.getElementById('btnPause');
+  var btnResume = document.getElementById('btnResume');
+  var btnNew = document.getElementById('btnNew');
+
+  var stateBadge = document.getElementById('stateBadge');
+  var stateText = document.getElementById('stateText');
+
+  var modalMask = document.getElementById('modalMask');
+  var modalTitle = document.getElementById('modalTitle');
+  var modalBody = document.getElementById('modalBody');
+  var modalClose = document.getElementById('modalClose');
+
+  var CELL = 24;
+  var COLS = canvas.width / CELL;
+  var ROWS = canvas.height / CELL;
+
+  /* ============ 状态机 ============ */
+  var STATE = { IDLE: 'idle', RUNNING: 'running', PAUSED: 'paused', OVER: 'over' };
+  var gameState = STATE.IDLE;
+
+  var snake, dir, nextDir, food, score, best, timer, speedLevel = 5;
+  var lastEndReason = '';
+
+  best = Number(safeGet('snake_best') || 0) || 0;
+  bestEl.textContent = best;
+
+  function baseInterval() { return 230 - speedLevel * 17; }
+
+  /* ============ UI 同步 ============ */
+  function syncUI() {
+    btnStart.disabled = !(gameState === STATE.IDLE || gameState === STATE.OVER);
+    btnPause.disabled = gameState !== STATE.RUNNING;
+    btnResume.disabled = gameState !== STATE.PAUSED;
+    btnNew.disabled = false;
+
+    var label = '未开始';
+    if (gameState === STATE.RUNNING) label = '运行中';
+    else if (gameState === STATE.PAUSED) label = '已暂停';
+    else if (gameState === STATE.OVER) label = '已结束';
+
+    stateBadge.setAttribute('data-state', gameState);
+    stateText.textContent = label;
+  }
+
+  /* ============ 棋盘 ============ */
+  function resetBoard() {
+    snake = [{ x: 8, y: 12 }, { x: 7, y: 12 }, { x: 6, y: 12 }];
+    dir = { x: 1, y: 0 };
+    nextDir = { x: 1, y: 0 };
+    score = 0;
+    scoreEl.textContent = '0';
+    placeFood();
+    draw();
+  }
+
+  function placeFood() {
+    var free = [];
+    for (var y = 0; y < ROWS; y++) {
+      for (var x = 0; x < COLS; x++) {
+        var occupied = false;
+        for (var i = 0; i < snake.length; i++) {
+          if (snake[i].x === x && snake[i].y === y) { occupied = true; break; }
+        }
+        if (!occupied) free.push({ x: x, y: y });
+      }
+    }
+    food = free.length ? free[Math.floor(Math.random() * free.length)] : { x: 0, y: 0 };
+  }
+
+  function drawRoundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function draw() {
+    ctx.fillStyle = '#fdf9f3';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.strokeStyle = 'rgba(200, 175, 145, 0.16)';
+    ctx.lineWidth = 1;
+    for (var i = 1; i < COLS; i++) {
+      ctx.beginPath();
+      ctx.moveTo(i * CELL + 0.5, 0);
+      ctx.lineTo(i * CELL + 0.5, canvas.height);
+      ctx.stroke();
+    }
+    for (var j = 1; j < ROWS; j++) {
+      ctx.beginPath();
+      ctx.moveTo(0, j * CELL + 0.5);
+      ctx.lineTo(canvas.width, j * CELL + 0.5);
+      ctx.stroke();
+    }
+
+    if (food) {
+      var cx = food.x * CELL + CELL / 2;
+      var cy = food.y * CELL + CELL / 2;
+      ctx.save();
+      ctx.shadowColor = 'rgba(239, 107, 90, 0.35)';
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = '#ef6b5a';
+      ctx.beginPath();
+      ctx.arc(cx, cy, CELL * 0.32, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.beginPath();
+      ctx.arc(cx - CELL * 0.1, cy - CELL * 0.1, CELL * 0.08, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    for (var k = 0; k < snake.length; k++) {
+      var seg = snake[k];
+      var isHead = k === 0;
+      var pad = isHead ? 1.5 : 2.5;
+      var sx = seg.x * CELL + pad;
+      var sy = seg.y * CELL + pad;
+      var size = CELL - pad * 2;
+      ctx.save();
+      if (isHead) {
+        ctx.shadowColor = 'rgba(245, 158, 11, 0.4)';
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = '#f59e0b';
+      } else {
+        var t = k / Math.max(snake.length, 1);
+        var r = Math.round(245 - t * 30);
+        var g = Math.round(158 + t * 45);
+        var b = Math.round(11 + t * 60);
+        ctx.fillStyle = 'rgb(' + r + ', ' + g + ', ' + b + ')';
+      }
+      drawRoundRect(sx, sy, size, size, isHead ? 8 : 6);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    if (snake.length) {
+      var head = snake[0];
+      var hcx = head.x * CELL + CELL / 2;
+      var hcy = head.y * CELL + CELL / 2;
+      var off = CELL * 0.18;
+      var rr = CELL * 0.09;
+      var e1, e2;
+      if (dir.x === 1) { e1 = { x: hcx + off, y: hcy - off }; e2 = { x: hcx + off, y: hcy + off }; }
+      else if (dir.x === -1) { e1 = { x: hcx - off, y: hcy - off }; e2 = { x: hcx - off, y: hcy + off }; }
+      else if (dir.y === 1) { e1 = { x: hcx - off, y: hcy + off }; e2 = { x: hcx + off, y: hcy + off }; }
+      else { e1 = { x: hcx - off, y: hcy - off }; e2 = { x: hcx + off, y: hcy - off }; }
+      ctx.fillStyle = '#5a3d12';
+      [e1, e2].forEach(function (p) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, rr, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+  }
+
+  /* ============ 计时器 ============ */
+  function clearTimer() {
+    if (timer) { clearInterval(timer); timer = null; }
+  }
+  function runLoop() {
+    clearTimer();
+    timer = setInterval(step, baseInterval());
+  }
+
+  /* ============ 核心 step ============ */
+  function step() {
+    if (gameState !== STATE.RUNNING) return;
+
+    dir = nextDir;
+    var head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+
+    if (head.x < 0 || head.x >= COLS || head.y < 0 || head.y >= ROWS) {
+      return gameOver('撞到墙壁了');
+    }
+
+    var willGrow = (head.x === food.x && head.y === food.y);
+    var body = willGrow ? snake : snake.slice(0, -1);
+    for (var i = 0; i < body.length; i++) {
+      if (body[i].x === head.x && body[i].y === head.y) {
+        return gameOver('咬到自己了');
+      }
+    }
+
+    snake.unshift(head);
+    if (willGrow) {
+      score += 10;
+      scoreEl.textContent = score;
+      if (score > best) {
+        best = score;
+        bestEl.textContent = best;
+        safeSet('snake_best', best);
+      }
+      placeFood();
+    } else {
+      snake.pop();
+    }
+    draw();
+  }
+
+  /* ============ 状态切换 ============ */
+  function startGame() {
+    if (gameState === STATE.RUNNING) return;
+    resetBoard();
+    gameState = STATE.RUNNING;
+    overlay.classList.add('hidden');
+    runLoop();
+    syncUI();
+  }
+
+  function pauseGame() {
+    if (gameState !== STATE.RUNNING) return;
+    clearTimer();
+    gameState = STATE.PAUSED;
+    overlayTitle.textContent = '已暂停';
+    overlayText.textContent = '当前得分 ' + score + ' 分。点击“继续游戏”或按空格键恢复。';
+    overlayBtn.textContent = '继续游戏';
+    overlay.classList.remove('hidden');
+    syncUI();
+  }
+
+  function resumeGame() {
+    if (gameState !== STATE.PAUSED) return;
+    gameState = STATE.RUNNING;
+    overlay.classList.add('hidden');
+    runLoop();
+    syncUI();
+  }
+
+  function newGame() {
+    clearTimer();
+    resetBoard();
+    gameState = STATE.RUNNING;
+    overlay.classList.add('hidden');
+    runLoop();
+    syncUI();
+  }
+
+  function gameOver(reason) {
+    clearTimer();
+    gameState = STATE.OVER;
+    lastEndReason = reason || '';
+    overlayTitle.textContent = '游戏结束';
+    overlayText.textContent =
+      (lastEndReason ? lastEndReason + '！' : '') +
+      '本局得分 ' + score + ' 分，最高分 ' + best + ' 分。';
+    overlayBtn.textContent = '重新开始';
+    overlay.classList.remove('hidden');
+    syncUI();
+  }
+
+  /* ============ 按钮事件 ============ */
+  btnStart.addEventListener('click', function () {
+    if (gameState === STATE.IDLE || gameState === STATE.OVER) startGame();
+  });
+  btnPause.addEventListener('click', function () {
+    if (gameState === STATE.RUNNING) pauseGame();
+  });
+  btnResume.addEventListener('click', function () {
+    if (gameState === STATE.PAUSED) resumeGame();
+  });
+  btnNew.addEventListener('click', function () {
+    newGame();
+  });
+
+  overlayBtn.addEventListener('click', function () {
+    if (gameState === STATE.PAUSED) resumeGame();
+    else if (gameState === STATE.IDLE || gameState === STATE.OVER) startGame();
+  });
+
+  /* ============ 速度 ============ */
+  speedInput.addEventListener('input', function () {
+    speedLevel = Number(speedInput.value);
+    speedVal.textContent = speedLevel;
+    if (gameState === STATE.RUNNING) runLoop();
+  });
+
+  /* ============ 键盘 ============ */
+  function setDirection(nx, ny) {
+    if (nx === -dir.x && ny === -dir.y) return;
+    if (nx === dir.x && ny === dir.y) return;
+    nextDir = { x: nx, y: ny };
+  }
+
+  var keyMap = {
+    ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+    w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0],
+    W: [0, -1], S: [0, 1], A: [-1, 0], D: [1, 0]
+  };
+
+  document.addEventListener('keydown', function (e) {
+    if (modalMask.classList.contains('open')) {
+      if (e.key === 'Escape') closeModal();
+      return;
+    }
+    if (e.key === ' ' || e.key === 'Spacebar') {
+      e.preventDefault();
+      if (gameState === STATE.RUNNING) pauseGame();
+      else if (gameState === STATE.PAUSED) resumeGame();
+      else if (gameState === STATE.IDLE || gameState === STATE.OVER) startGame();
+      return;
+    }
+    if (keyMap[e.key]) {
+      e.preventDefault();
+      if (gameState !== STATE.RUNNING) return;
+      setDirection(keyMap[e.key][0], keyMap[e.key][1]);
+    }
+  });
+
+  /* ============ 触摸 ============ */
+  var touchStart = null;
+  canvas.addEventListener('touchstart', function (e) {
+    var t = e.changedTouches[0];
+    touchStart = { x: t.clientX, y: t.clientY };
+  }, { passive: true });
+  canvas.addEventListener('touchmove', function (e) { e.preventDefault(); }, { passive: false });
+  canvas.addEventListener('touchend', function (e) {
+    if (!touchStart || gameState !== STATE.RUNNING) { touchStart = null; return; }
+    var t = e.changedTouches[0];
+    var dx = t.clientX - touchStart.x;
+    var dy = t.clientY - touchStart.y;
+    if (Math.abs(dx) < 24 && Math.abs(dy) < 24) { touchStart = null; return; }
+    if (Math.abs(dx) > Math.abs(dy)) setDirection(dx > 0 ? 1 : -1, 0);
+    else setDirection(0, dy > 0 ? 1 : -1);
+    touchStart = null;
+  }, { passive: true });
+
+  /* ============ 模态浮层 ============ */
+  var modalContent = {
+    intro: {
+      title: '游戏介绍',
+      html: '<p>这是一款经典街机风格的贪吃蛇小游戏。控制小蛇在棋盘上移动，不断吃掉出现的果实来增长身体、累积分数。</p>' +
+            '<p>蛇身会随着进食越来越长，可活动空间越来越小，挑战你能坚持多久、拿到多高的分数。</p>'
+    },
+    rules: {
+      title: '玩法规则',
+      html: '<ul class="rule-list">' +
+              '<li><span class="dot">1</span><span>每吃到一个果实得 <strong>10 分</strong>，蛇身随之变长一节。</span></li>' +
+              '<li><span class="dot">2</span><span>撞到墙壁或自己的身体，游戏立即结束。</span></li>' +
+              '<li><span class="dot">3</span><span>随时可点击“暂停游戏”停止计时，点击“继续游戏”从原局面恢复。</span></li>' +
+              '<li><span class="dot">4</span><span>速度越快，得分节奏越紧凑，但容错更低，可在右侧调节。</span></li>' +
+            '</ul>'
+    },
+    controls: {
+      title: '操作方式',
+      html: '<p>使用键盘方向键 <span class="key-inline">↑</span><span class="key-inline">↓</span><span class="key-inline">←</span><span class="key-inline">→</span> 或 <span class="key-inline">W</span><span class="key-inline">A</span><span class="key-inline">S</span><span class="key-inline">D</span> 控制小蛇移动。</p>' +
+            '<p>按 <span class="key-inline">空格</span> 可在运行与暂停之间快速切换；移动端可在棋盘上滑动手指改变方向。</p>' +
+            '<p>下方四个按钮：<strong>开始游戏</strong>从初始状态开始，<strong>暂停游戏</strong>保留局面停止计时，<strong>继续游戏</strong>从暂停处恢复，<strong>新一局</strong>重置棋盘与分数并立即开始。</p>'
+    }
+  };
+
+  function openModal(key) {
+    var data = modalContent[key];
+    if (!data) return;
+    modalTitle.textContent = data.title;
+    modalBody.innerHTML = data.html;
+    modalMask.classList.add('open');
+  }
+  function closeModal() {
+    modalMask.classList.remove('open');
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('.chip'), function (chip) {
+    chip.addEventListener('click', function () { openModal(chip.getAttribute('data-modal')); });
+  });
+  modalClose.addEventListener('click', closeModal);
+  modalMask.addEventListener('click', function (e) {
+    if (e.target === modalMask) closeModal();
+  });
+
+  /* ============ 初始化 ============ */
+  resetBoard();
+  syncUI();
+  overlayTitle.textContent = '贪吃蛇';
+  overlayText.textContent = '吃掉果实让蛇变长，别撞墙也别咬到自己。';
+  overlayBtn.textContent = '开始游戏';
+  overlay.classList.remove('hidden');
+})();
+</script>
+</body>
+</html>

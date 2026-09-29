@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* 明亮暖色主题（默认）：米白底 + 暖橙点缀，温和不刺眼 */
+  :root {
+    --c-bg: 250 246 240; /* #faf6f0 整体背景 */
+    --c-sidebar: 255 253 249; /* #fffdf9 左栏 */
+    --c-panel: 255 255 255; /* #ffffff 中栏/卡片 */
+    --c-inset: 246 240 230; /* #f6f0e6 输入框/助手气泡 */
+    --c-line: 229 218 202; /* #e5daca 边框 */
+    --c-ink: 63 56 48; /* #3f3830 主文字（暖深棕） */
+    --c-dim: 147 135 120; /* #938778 次文字 */
+    --c-brand: 217 119 6; /* #d97706 暖橙主色 */
+    --c-brand-hover: 184 96 4; /* #b86004 */
+    --c-brand-soft: 253 237 218; /* #fdedda 主色浅底 */
+    --c-danger: 198 74 60; /* #c64a3c 暖红 */
+    --c-scroll: 214 200 182;
+  }
+
+  /* 暗色主题：暖炭灰，不用纯黑 */
+  html.dark {
+    --c-bg: 28 25 22; /* #1c1916 */
+    --c-sidebar: 35 31 27; /* #231f1b */
+    --c-panel: 38 34 30; /* #26221e */
+    --c-inset: 47 42 36; /* #2f2a24 */
+    --c-line: 60 53 46; /* #3c352e */
+    --c-ink: 228 220 210;
+    --c-dim: 152 141 128;
+    --c-brand: 240 150 80; /* #f09650 暗色下提亮 */
+    --c-brand-hover: 247 168 105;
+    --c-brand-soft: 66 48 33; /* #423021 */
+    --c-danger: 238 130 110;
+    --c-scroll: 78 70 61;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    @apply bg-appbg text-ink font-sans antialiased;
+    overflow: hidden;
+  }
+}
+
+@layer utilities {
+  /* 自定义滚动条：跟随主题 */
+  .scroll-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scroll-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scroll-thin::-webkit-scrollbar-thumb {
+    background: rgb(var(--c-scroll));
+    border-radius: 4px;
+  }
+  .scroll-thin::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--c-brand) / 0.6);
+  }
+}
