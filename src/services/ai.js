@@ -1,22 +1,67 @@
 // 前端服务层：SSE 流式生成 + 会话管理 + 文件上传 + 指令优化。
 // DeepSeek 的真实地址与 API Key 都保存在后端，浏览器中不可见。
 
-// 匿名访客标识：同一浏览器固定不变，随请求头发给后端，
-// 用于会话隔离——不同访客打开站点只能看到自己的历史会话
-function ownerId() {
+// ---------- 登录凭证 ----------
+const TOKEN_KEY = 'aib-token'
+
+export function getToken() {
   try {
-    let id = localStorage.getItem('aib-owner-id')
-    if (!id) {
-      id = 'v' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
-      localStorage.setItem('aib-owner-id', id)
-    }
-    return id
+    return localStorage.getItem(TOKEN_KEY) || ''
   } catch {
-    return 'vanon'
+    return ''
   }
 }
 
-const ownerHeaders = () => ({ 'x-owner-id': ownerId() })
+export function setToken(token) {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token)
+    else localStorage.removeItem(TOKEN_KEY)
+  } catch {
+    /* 忽略 */
+  }
+}
+
+// 登录后所有请求携带凭证；后端按账号隔离数据
+const authHeaders = () => {
+  const t = getToken()
+  return t ? { Authorization: `Bearer ${t}` } : {}
+}
+
+// ---------- 注册 / 登录 ----------
+export async function registerApi(username, password) {
+  const res = await fetch('/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  })
+  const data = await res.json().catch(() => null)
+  if (!res.ok) throw new Error(data?.error || '注册失败。')
+  setToken(data.token)
+  return data
+}
+
+export async function loginApi(username, password) {
+  const res = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  })
+  const data = await res.json().catch(() => null)
+  if (!res.ok) throw new Error(data?.error || '登录失败。')
+  setToken(data.token)
+  return data
+}
+
+// 校验本地令牌是否仍有效（页面刷新后恢复登录态）
+export async function meApi() {
+  const res = await fetch('/api/auth/me', { headers: authHeaders() })
+  if (!res.ok) return null
+  return res.json().catch(() => null)
+}
+
+export function logoutApi() {
+  setToken('')
+}
 
 /**
  * 流式生成应用。事件流：meta → delta* → done | partial | error
@@ -39,7 +84,7 @@ export async function generateAppStream({
   try {
     res = await fetch('/api/generate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...ownerHeaders() },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ sessionId, prompt, attachments }),
       signal,
     })
@@ -149,35 +194,47 @@ export async function refinePrompt(prompt) {
 
 // ---------- 会话管理 ----------
 export async function listSessions() {
-  const res = await fetch('/api/sessions', { headers: ownerHeaders() })
+  const res = await fetch('/api/sessions', { headers: authHeaders() })
   if (!res.ok) throw new Error('获取会话列表失败。')
   const data = await res.json()
   return data.sessions || []
 }
 
 export async function fetchSession(id) {
-  const res = await fetch(`/api/sessions/${id}`)
+  const res = await fetch(`/api/sessions/${id}`, { headers: authHeaders() })
   const data = await res.json().catch(() => null)
   if (!res.ok) throw new Error(data?.error || '获取会话详情失败。')
   return data
 }
 
 export async function createSessionApi() {
-  const res = await fetch('/api/sessions', { method: 'POST', headers: ownerHeaders() })
+  const res = await fetch('/api/sessions', { method: 'POST', headers: authHeaders() })
   if (!res.ok) throw new Error('新建会话失败。')
   return res.json()
 }
 
 export async function deleteSessionApi(id) {
-  const res = await fetch(`/api/sessions/${id}`, { method: 'DELETE' })
+  const res = await fetch(`/api/sessions/${id}`, { method: 'DELETE', headers: authHeaders() })
   if (!res.ok) throw new Error('删除会话失败。')
 }
 
 // 标记会话已读（左侧未读小绿点消失）
 export async function markSessionRead(id) {
   try {
-    await fetch(`/api/sessions/${id}/read`, { method: 'POST' })
+    await fetch(`/api/sessions/${id}/read`, { method: 'POST', headers: authHeaders() })
   } catch {
     /* 忽略 */
   }
+}
+
+// 版本回滚：把指定历史版本设为当前应用
+export async function rollbackApi(sessionId, mid) {
+  const res = await fetch(`/api/sessions/${sessionId}/rollback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ mid }),
+  })
+  const data = await res.json().catch(() => null)
+  if (!res.ok) throw new Error(data?.error || '回滚失败。')
+  return data
 }

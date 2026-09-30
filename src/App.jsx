@@ -9,6 +9,11 @@ import {
   createSessionApi,
   deleteSessionApi,
   markSessionRead,
+  rollbackApi,
+  loginApi,
+  registerApi,
+  meApi,
+  logoutApi,
 } from './services/ai.js'
 import { pickRecommendations } from './recommendations.js'
 
@@ -355,7 +360,7 @@ function WelcomePanel({ suggestions, onPick, onRefresh }) {
         描述你的需求，或从下面推荐中挑选一个开始
       </p>
       <p className="text-[11px] text-dim/70 mt-1">
-        历史记录保存在当前浏览器中，仅自己可见；长时间无人访问后演示服务会自动重置记录
+        历史记录与账号数据云端保存，换设备登录也能找回
       </p>
 
       {suggestions.length > 0 && (
@@ -390,6 +395,133 @@ function WelcomePanel({ suggestions, onPick, onRefresh }) {
   )
 }
 
+// ---------------- 登录 / 注册门禁 ----------------
+function AuthView({ onAuthed }) {
+  const [mode, setMode] = useState('login') // login | register
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [password2, setPassword2] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setError('')
+    if (!username.trim() || !password) {
+      setError('请输入用户名和密码。')
+      return
+    }
+    if (mode === 'register' && password !== password2) {
+      setError('两次输入的密码不一致。')
+      return
+    }
+    setBusy(true)
+    try {
+      if (mode === 'register') {
+        await registerApi(username.trim(), password)
+      } else {
+        await loginApi(username.trim(), password)
+      }
+      try {
+        localStorage.setItem('aib-username', username.trim())
+      } catch {
+        /* 忽略 */
+      }
+      onAuthed(username.trim())
+    } catch (err) {
+      setError(err?.message || '操作失败，请稍后重试。')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="h-screen w-screen flex items-center justify-center bg-appbg px-4">
+      <div className="w-full max-w-[360px] bg-panel border border-line rounded-2xl shadow-sm p-7">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="w-2.5 h-2.5 rounded-full bg-brand shadow-sm" />
+          <span className="text-ink font-semibold text-[15px]">AI 应用构建器</span>
+        </div>
+        <p className="text-xs text-dim mb-5">
+          {mode === 'login' ? '登录后继续创建你的应用' : '注册一个账号，开始创建你的应用'}
+        </p>
+
+        {/* 登录 / 注册切换 */}
+        <div className="flex bg-inset rounded-lg p-0.5 mb-4">
+          {[
+            ['login', '登录'],
+            ['register', '注册'],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => {
+                setMode(key)
+                setError('')
+              }}
+              className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                mode === key ? 'bg-panel text-brand shadow-sm' : 'text-dim hover:text-ink'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className="block text-[11px] text-dim mb-1">用户名</label>
+            <input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="2~20 位字母、数字或中文"
+              className="w-full px-3 py-2 rounded-lg bg-inset border border-line text-[13px] text-ink placeholder:text-dim/60 focus:outline-none focus:border-brand"
+              autoComplete="username"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] text-dim mb-1">密码</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="至少 6 位"
+              className="w-full px-3 py-2 rounded-lg bg-inset border border-line text-[13px] text-ink placeholder:text-dim/60 focus:outline-none focus:border-brand"
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+            />
+          </div>
+          {mode === 'register' && (
+            <div>
+              <label className="block text-[11px] text-dim mb-1">确认密码</label>
+              <input
+                type="password"
+                value={password2}
+                onChange={(e) => setPassword2(e.target.value)}
+                placeholder="再输入一次密码"
+                className="w-full px-3 py-2 rounded-lg bg-inset border border-line text-[13px] text-ink placeholder:text-dim/60 focus:outline-none focus:border-brand"
+                autoComplete="new-password"
+              />
+            </div>
+          )}
+
+          {error && <p className="text-[12px] text-danger">{error}</p>}
+
+          <button
+            type="submit"
+            disabled={busy}
+            className="w-full py-2.5 rounded-xl bg-brand hover:bg-brandHover disabled:opacity-60 text-white text-sm font-medium shadow-sm transition-colors"
+          >
+            {busy ? '请稍候…' : mode === 'login' ? '登录' : '注册并开始'}
+          </button>
+        </form>
+
+        <p className="text-[10px] text-dim/70 mt-4 text-center">
+          密码加密存储于云端数据库，历史记录跟随账号保存
+        </p>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const [sessions, setSessions] = useState([])
   const [sessionId, setSessionId] = useState('')
@@ -400,10 +532,20 @@ export default function App() {
   const [streamText, setStreamText] = useState('')
   const [streamModel, setStreamModel] = useState('')
 
+  // 登录态：username 为空表示未登录，展示登录/注册门禁
+  const [authed, setAuthed] = useState(false)
+  const [authChecking, setAuthChecking] = useState(true)
+  const [username, setUsername] = useState('')
+
   // 待发送的附件材料 [{filename, content, chars}]
   const [attachments, setAttachments] = useState([])
   const [refining, setRefining] = useState(false) // “优化指令”请求中
   const [queueCount, setQueueCount] = useState(0) // 排队中的需求条数
+
+  // 代码管理：版本历史抽屉 / 查看代码弹窗
+  const [showHistory, setShowHistory] = useState(false)
+  const [showCode, setShowCode] = useState(false)
+  const [codeCopied, setCodeCopied] = useState(false)
 
   // iframe 保活池：key=会话 id，切换会话只隐藏不卸载，游戏等应用的运行时进度得以保留
   const [previewMap, setPreviewMap] = useState({})
@@ -536,9 +678,20 @@ export default function App() {
     setPreviewOrder((prev) => prev.filter((x) => x !== sid))
   }
 
-  // 启动：拉取会话列表，取最近一个；没有则新建
+  // 启动：先恢复登录态，已登录则拉取会话列表，取最近一个；没有则新建
   async function boot() {
     try {
+      const me = await meApi()
+      if (!me?.user) {
+        setAuthChecking(false)
+        return
+      }
+      setAuthed(true)
+      try {
+        setUsername(localStorage.getItem('aib-username') || '用户')
+      } catch {
+        setUsername('用户')
+      }
       const list = await listSessions()
       setSessions(list)
       if (list.length > 0) {
@@ -550,7 +703,28 @@ export default function App() {
       setMessages([
         { role: 'error', text: err?.message || '初始化失败，请确认后端服务已启动（npm run dev:all）。' },
       ])
+    } finally {
+      setAuthChecking(false)
     }
+  }
+
+  // 登录/注册成功后进入主界面
+  function handleAuthed(name) {
+    setUsername(name)
+    setAuthed(true)
+    boot()
+  }
+
+  // 退出登录：清凭证与本地界面状态
+  function handleLogout() {
+    logoutApi()
+    setAuthed(false)
+    setUsername('')
+    setSessions([])
+    setSessionId('')
+    setMessages([])
+    setPreviewMap({})
+    setPreviewOrder([])
   }
 
   async function refreshSessions() {
@@ -799,7 +973,8 @@ export default function App() {
           setMessages((prev) => [...prev, { role: 'assistant', text: progress }])
         }
       } else {
-        touchPreview(item.sid, result.html)
+        // 生成完成；澄清类回复没有 html，仅展示文字，不动预览
+        if (result.html) touchPreview(item.sid, result.html)
         if (activeSidRef.current === item.sid) {
           setMessages((prev) => [
             ...prev,
@@ -881,10 +1056,54 @@ export default function App() {
 
   const currentHtml = previewMap[sessionId] || ''
   const currentTitle = sessions.find((s) => s.id === sessionId)?.title || '新的会话'
+  // 版本列表：历史上所有带应用产物的助手消息（新→旧）
+  const versions = messages
+    .filter((m) => m.role === 'assistant' && m.html && m.mid)
+    .map((m) => ({ mid: m.mid, chars: m.html.length, text: m.text || '' }))
+    .reverse()
+
+  // 回滚到指定历史版本：更新服务端当前应用并刷新预览
+  async function handleRollback(mid) {
+    try {
+      const data = await rollbackApi(sessionId, mid)
+      touchPreview(sessionId, data.html)
+      setShowHistory(false)
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', text: '已回滚到所选历史版本，右侧预览已更新。' },
+      ])
+      await refreshSessions()
+    } catch (err) {
+      setMessages((prev) => [...prev, { role: 'error', text: err?.message || '回滚失败。' }])
+    }
+  }
+
+  // 复制当前应用源代码
+  function handleCopyCode() {
+    navigator.clipboard.writeText(currentHtml).then(
+      () => {
+        setCodeCopied(true)
+        setTimeout(() => setCodeCopied(false), 1500)
+      },
+      () => {},
+    )
+  }
   // 空会话（无消息且当前会话没有生成任务）时展示推荐
   const isEmpty = messages.length === 0 && generatingSid !== sessionId
   // 流式气泡/遮罩只在生成任务所属会话显示
   const showStreaming = isGenerating && generatingSid === sessionId
+
+  // ---------- 登录门禁 ----------
+  if (authChecking) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-appbg text-dim text-sm">
+        正在加载…
+      </div>
+    )
+  }
+  if (!authed) {
+    return <AuthView onAuthed={handleAuthed} />
+  }
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-appbg">
@@ -980,8 +1199,26 @@ export default function App() {
           })}
         </div>
 
+        {/* 用户信息 + 退出登录 */}
+        <div className="border-t border-line px-3 py-2.5 flex items-center gap-2">
+          <span className="w-7 h-7 rounded-full bg-brandSoft text-brand flex items-center justify-center text-xs font-semibold shrink-0">
+            {(username || '?').slice(0, 1).toUpperCase()}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[12px] text-ink font-medium truncate">{username}</div>
+            <div className="text-[10px] text-dim">已登录</div>
+          </div>
+          <button
+            onClick={handleLogout}
+            title="退出登录"
+            className="px-2 py-1 rounded-md text-[11px] text-dim hover:text-danger hover:bg-inset transition-colors"
+          >
+            退出
+          </button>
+        </div>
+
         <footer className="border-t border-line px-4 py-2.5 text-[10px] text-dim">
-          deepseek-chat · v0.8.0
+          deepseek-chat · v0.9.0
         </footer>
       </aside>
 
@@ -1149,6 +1386,23 @@ export default function App() {
               <IconRefresh />
               刷新
             </PreviewButton>
+            <PreviewButton
+              disabled={versions.length < 2}
+              onClick={() => setShowHistory(true)}
+              title="查看历史版本并回滚"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+                <path d="M3 3v5h5M12 7v5l3 3" />
+              </svg>
+              版本
+            </PreviewButton>
+            <PreviewButton disabled={!currentHtml} onClick={() => { setCodeCopied(false); setShowCode(true) }} title="查看当前应用源代码">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M16 18l6-6-6-6M8 6l-6 6 6 6" />
+              </svg>
+              代码
+            </PreviewButton>
             <PreviewButton disabled={!currentHtml} onClick={handleDownload} title="下载当前应用 HTML">
               <IconDownload />
               下载
@@ -1177,6 +1431,105 @@ export default function App() {
               />
             )
           })}
+
+          {/* 版本历史抽屉 */}
+          {showHistory && (
+            <div className="absolute inset-0 z-20" onClick={() => setShowHistory(false)}>
+              <div className="absolute inset-0 bg-black/20" />
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="absolute top-0 right-0 h-full w-[300px] bg-panel border-l border-line shadow-lg flex flex-col"
+              >
+                <div className="flex items-center justify-between px-4 h-12 border-b border-line shrink-0">
+                  <span className="text-sm font-medium text-ink">版本历史</span>
+                  <button
+                    onClick={() => setShowHistory(false)}
+                    className="p-1 rounded-md text-dim hover:text-ink hover:bg-inset transition-colors"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                      <path d="M6 6l12 12M18 6L6 18" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto scroll-thin p-2.5">
+                  {versions.length === 0 && (
+                    <p className="text-xs text-dim text-center mt-8">还没有历史版本</p>
+                  )}
+                  {versions.map((v, i) => {
+                    const idx = versions.length - i // 1 = 最早版本
+                    const isCurrent = v.chars === currentHtml.length && currentHtml
+                    return (
+                      <div key={v.mid} className="mb-1.5 rounded-lg border border-line bg-appbg p-2.5">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[12px] font-medium text-ink">版本 {idx}</span>
+                          <span className="text-[10px] text-dim">{v.chars.toLocaleString()} 字符</span>
+                        </div>
+                        <p className="text-[11px] text-dim truncate mb-2">{v.text}</p>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => {
+                              touchPreview(sessionId, messages.find((m) => m.mid === v.mid)?.html)
+                            }}
+                            className="px-2 py-1 rounded-md bg-inset text-[11px] text-ink hover:text-brand transition-colors"
+                          >
+                            预览
+                          </button>
+                          <button
+                            onClick={() => handleRollback(v.mid)}
+                            className="px-2 py-1 rounded-md bg-brand text-white text-[11px] hover:bg-brandHover transition-colors"
+                          >
+                            设为当前版本
+                          </button>
+                          {isCurrent && (
+                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400">当前</span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                <p className="px-4 py-2.5 text-[10px] text-dim border-t border-line">
+                  每次生成的应用都会保存为一个版本，可随时预览或回滚
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* 查看代码弹窗 */}
+          {showCode && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center p-6" onClick={() => setShowCode(false)}>
+              <div className="absolute inset-0 bg-black/30" />
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="relative w-full max-w-[720px] max-h-full flex flex-col bg-panel border border-line rounded-xl shadow-lg overflow-hidden"
+              >
+                <div className="flex items-center justify-between px-4 h-11 border-b border-line shrink-0">
+                  <span className="text-[13px] font-medium text-ink">
+                    源代码 · {currentTitle}（{currentHtml.length.toLocaleString()} 字符）
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={handleCopyCode}
+                      className="px-2.5 py-1 rounded-md bg-inset text-[11px] text-ink hover:text-brand transition-colors"
+                    >
+                      {codeCopied ? '已复制 ✓' : '复制全部'}
+                    </button>
+                    <button
+                      onClick={() => setShowCode(false)}
+                      className="p-1 rounded-md text-dim hover:text-ink hover:bg-inset transition-colors"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                        <path d="M6 6l12 12M18 6L6 18" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <pre className="flex-1 overflow-auto scroll-thin p-4 text-[11px] leading-relaxed text-ink bg-appbg font-mono whitespace-pre-wrap break-all">
+                  {currentHtml}
+                </pre>
+              </div>
+            </div>
+          )}
 
           {/* 空状态 */}
           {!currentHtml && (

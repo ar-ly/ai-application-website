@@ -9,6 +9,7 @@ import path from 'node:path'
 import vm from 'node:vm'
 import { fileURLToPath } from 'node:url'
 import {
+  dbReady,
   listSessions,
   getSession,
   createSession,
@@ -16,7 +17,13 @@ import {
   addMessage,
   setSessionApp,
   markRead,
+  rollbackVersion,
   newId,
+  signToken,
+  verifyToken,
+  findUserByUsername,
+  createUser,
+  verifyPassword,
 } from './store.js'
 
 // 无论从哪个工作目录启动，都能正确加载项目根目录的 .env
@@ -52,8 +59,6 @@ const MOCK_KEYWORDS = [
   { patterns: /2048/i, file: '2048.html', label: '2048 游戏' },
   { patterns: /俄罗斯方块|tetris|方块消除/i, file: 'tetris.html', label: '俄罗斯方块' },
 ]
-// 兜底产物：当用户输入匹配不到任何预置关键词时，返回通用应用
-const MOCK_FALLBACK = 'tetris.html'
 
 // 模拟流式输出：把完整文本按 ~80 字符切块、每 30ms 发一个 delta
 function streamMockHtml(res, send, html) {
@@ -85,7 +90,8 @@ function matchMockProduct(prompt) {
   for (const m of MOCK_KEYWORDS) {
     if (m.patterns.test(prompt)) return { file: m.file, label: m.label }
   }
-  return { file: MOCK_FALLBACK, label: '示例应用' }
+  // 无匹配：返回 null，由调用方以对话方式澄清引导（演示模式下不强行生成无关应用）
+  return null
 }
 
 const SYSTEM_PROMPT = [
@@ -134,40 +140,110 @@ const UPLOAD_EXTENSIONS = new Set([
 const MAX_FILE_CHARS = 200_000 // 单个文件约 20 万字符
 const MAX_FILES_PER_REQUEST = 5
 
-// ---------- 会话管理 API ----------
-// 访客标识：前端 localStorage 生成并随请求头携带，
-// 不同浏览器（访客）只能看到自己的会话，互不可见
-function getOwnerId(req) {
-  const id = String(req.get('x-owner-id') || '').trim()
-  return id.slice(0, 64) || null
+// ---------- 账号鉴权 ----------
+// 从 Authorization: Bearer <token> 解析当前用户
+function authUser(req) {
+  const token = String(req.get('authorization') || '').replace(/^Bearer\s+/i, '')
+  return verifyToken(token)
 }
 
-app.get('/api/sessions', (req, res) => {
-  res.json({ sessions: listSessions(getOwnerId(req)) })
+function requireAuth(req, res, next) {
+  if (!dbReady) {
+    return res.status(500).json({ error: '服务器未配置 DATABASE_URL（Neon 数据库），请联系部署者。' })
+  }
+  const uid = authUser(req)
+  if (!uid) return res.status(401).json({ error: '请先登录后再操作。' })
+  req.userId = uid
+  next()
+}
+
+const USERNAME_RE = /^[\u4e00-\u9fa5\w-]{2,20}$/
+
+// 注册：创建账号并直接返回登录令牌
+app.post('/api/auth/register', async (req, res) => {
+  if (!dbReady) {
+    return res.status(500).json({ error: '服务器未配置 DATABASE_URL（Neon 数据库），请联系部署者。' })
+  }
+  const username = String(req.body?.username || '').trim()
+  const password = String(req.body?.password || '')
+  if (!USERNAME_RE.test(username)) {
+    return res.status(400).json({ error: '用户名需为 2~20 位字母、数字、下划线、中划线或中文。' })
+  }
+  if (password.length < 6 || password.length > 64) {
+    return res.status(400).json({ error: '密码长度需在 6~64 位之间。' })
+  }
+  try {
+    if (await findUserByUsername(username)) {
+      return res.status(409).json({ error: '该用户名已被注册，请换一个。' })
+    }
+    const user = await createUser(username, password)
+    res.status(201).json({ token: signToken(user.id), user: { id: user.id, username: user.username } })
+  } catch (err) {
+    console.error('[auth/register]', err.message)
+    res.status(500).json({ error: '注册失败，请稍后重试。' })
+  }
 })
 
-app.post('/api/sessions', (req, res) => {
-  res.status(201).json(createSession(getOwnerId(req)))
+// 登录：校验密码并签发令牌
+app.post('/api/auth/login', async (req, res) => {
+  if (!dbReady) {
+    return res.status(500).json({ error: '服务器未配置 DATABASE_URL（Neon 数据库），请联系部署者。' })
+  }
+  const username = String(req.body?.username || '').trim()
+  const password = String(req.body?.password || '')
+  try {
+    const user = await findUserByUsername(username)
+    if (!user || !verifyPassword(password, user.pass_hash)) {
+      return res.status(401).json({ error: '用户名或密码不正确。' })
+    }
+    res.json({ token: signToken(user.id), user: { id: user.id, username: user.username } })
+  } catch (err) {
+    console.error('[auth/login]', err.message)
+    res.status(500).json({ error: '登录失败，请稍后重试。' })
+  }
 })
 
-app.get('/api/sessions/:id', (req, res) => {
-  const session = getSession(req.params.id)
+// 当前登录用户信息（页面刷新后恢复登录态）
+app.get('/api/auth/me', requireAuth, async (req, res) => {
+  res.json({ user: { id: req.userId } })
+})
+
+// ---------- 会话管理 API（全部要求登录，按账号隔离） ----------
+app.get('/api/sessions', requireAuth, async (req, res) => {
+  res.json({ sessions: await listSessions(req.userId) })
+})
+
+app.post('/api/sessions', requireAuth, async (req, res) => {
+  res.status(201).json(await createSession(req.userId))
+})
+
+app.get('/api/sessions/:id', requireAuth, async (req, res) => {
+  const session = await getSession(req.params.id, req.userId)
   if (!session) return res.status(404).json({ error: '会话不存在或已被删除。' })
   res.json(session)
 })
 
-app.delete('/api/sessions/:id', (req, res) => {
-  const ok = deleteSession(req.params.id)
+app.delete('/api/sessions/:id', requireAuth, async (req, res) => {
+  const ok = await deleteSession(req.params.id, req.userId)
   if (!ok) return res.status(404).json({ error: '会话不存在或已被删除。' })
   res.json({ ok: true })
 })
 
 // 标记会话已读（用户打开查看后，左侧小绿点消失）
-app.post('/api/sessions/:id/read', (req, res) => {
-  if (!markRead(req.params.id)) {
+app.post('/api/sessions/:id/read', requireAuth, async (req, res) => {
+  if (!(await markRead(req.params.id, req.userId))) {
     return res.status(404).json({ error: '会话不存在或已被删除。' })
   }
   res.json({ ok: true })
+})
+
+// 版本回滚：把指定历史消息中的 HTML 设为当前应用
+app.post('/api/sessions/:id/rollback', requireAuth, async (req, res) => {
+  const mid = String(req.body?.mid || '')
+  if (!mid) return res.status(400).json({ error: '缺少版本消息 ID。' })
+  const html = await rollbackVersion(req.params.id, mid, req.userId)
+  if (!html) return res.status(404).json({ error: '版本不存在或没有可回滚的应用。' })
+  res.json({ ok: true, html })
 })
 
 // ---------- 文件上传（文本类材料） ----------
@@ -278,6 +354,7 @@ app.get('/api/health', (req, res) => {
     model: DEEPSEEK_MODEL,
     keyConfigured: Boolean(process.env.DEEPSEEK_API_KEY),
     mockMode: MOCK_ACTIVE,
+    dbReady,
   })
 })
 
@@ -294,7 +371,7 @@ app.post('/api/generate/:taskId/stop', (req, res) => {
 })
 
 // ---------- 生成接口（SSE 流式，支持多轮迭代 + 附件材料） ----------
-app.post('/api/generate', async (req, res) => {
+app.post('/api/generate', requireAuth, async (req, res) => {
   const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : ''
   const sessionId = typeof req.body?.sessionId === 'string' ? req.body.sessionId : ''
   const attachments = Array.isArray(req.body?.attachments)
@@ -318,11 +395,16 @@ app.post('/api/generate', async (req, res) => {
       .json({ error: '服务器未配置 DEEPSEEK_API_KEY，请在项目根目录 .env 中设置后重启后端。' })
   }
 
-  let session = sessionId ? getSession(sessionId) : null
+  let session = null
+  try {
+    session = sessionId ? await getSession(sessionId, req.userId) : null
+  } catch (err) {
+    return res.status(500).json({ error: `读取会话失败：${err.message}` })
+  }
   if (sessionId && !session) {
     return res.status(404).json({ error: '会话不存在或已被删除，请刷新页面后重试。' })
   }
-  if (!session) session = createSession(getOwnerId(req))
+  if (!session) session = await createSession(req.userId)
 
   // 组装送给模型的用户内容：附件材料 + 多轮上下文 + 本轮需求
   let userContent = prompt
@@ -343,7 +425,7 @@ app.post('/api/generate', async (req, res) => {
   }
 
   // 先落库用户消息（即使生成失败，提问记录也保留）
-  addMessage(session.id, {
+  await addMessage(session.id, {
     mid: newId(),
     role: 'user',
     text: prompt,
@@ -373,9 +455,28 @@ app.post('/api/generate', async (req, res) => {
   // ---------- Mock 演示模式 ----------
   if (MOCK_ACTIVE) {
     const matched = matchMockProduct(prompt)
-    const html = loadMockProduct(matched.file)
-    if (!html) {
-      send({ type: 'error', error: '演示环境暂不支持该应用，请尝试：贪吃蛇 / 2048 / 俄罗斯方块 / 个人主页 / 菜单' })
+    const html = matched ? loadMockProduct(matched.file) : null
+    if (!matched || !html) {
+      // 无匹配：以对话方式澄清引导，不强行生成无关应用（提升演示模式的交互体验）
+      const clarifyText =
+        '我目前是演示模式，暂时只能直接生成这几类应用：\n' +
+        '贪吃蛇游戏、2048 游戏、俄罗斯方块。\n\n' +
+        '你可以直接说"做一个贪吃蛇游戏"，或从推荐卡片中选择一个开始。' +
+        '如果配置了 AI 服务，我就能理解任意需求了。'
+      const assistantMsg = {
+        mid: newId(),
+        role: 'assistant',
+        text: clarifyText,
+        model: 'mock',
+        ts: Date.now(),
+      }
+      await addMessage(session.id, assistantMsg)
+      send({
+        type: 'done',
+        html: null,
+        model: 'mock',
+        message: { mid: assistantMsg.mid, text: assistantMsg.text },
+      })
       res.end()
       return
     }
@@ -389,14 +490,13 @@ app.post('/api/generate', async (req, res) => {
       model: 'mock',
       ts: Date.now(),
     }
-    addMessage(session.id, assistantMsg)
-    setSessionApp(session.id, html)
+    await addMessage(session.id, assistantMsg)
+    await setSessionApp(session.id, html)
     send({
       type: 'done',
       html,
       model: 'mock',
       message: { mid: assistantMsg.mid, text: assistantMsg.text },
-      session: getSession(session.id),
     })
     res.end()
     return
@@ -625,22 +725,21 @@ app.post('/api/generate', async (req, res) => {
     model: upstreamModel,
     ts: Date.now(),
   }
-  addMessage(session.id, assistantMsg)
-  setSessionApp(session.id, html)
+  await addMessage(session.id, assistantMsg)
+  await setSessionApp(session.id, html)
 
   send({
     type: 'done',
     html,
     model: upstreamModel,
     message: { mid: assistantMsg.mid, text: assistantMsg.text },
-    session: getSession(session.id),
   })
   res.end()
 })
 
 // ---------- 生成的应用独立访问链接（分享/新窗口） ----------
-app.get('/apps/:sid/:mid', (req, res) => {
-  const session = getSession(req.params.sid)
+app.get('/apps/:sid/:mid', async (req, res) => {
+  const session = await getSession(req.params.sid)
   const msg = session?.messages.find((m) => m.mid === req.params.mid)
   if (!msg || !msg.html) return res.status(404).send('应用不存在或已被删除。')
   res.type('html').send(msg.html)
