@@ -38,8 +38,11 @@ export function newId() {
 }
 
 // 会话列表摘要（不含消息正文与应用 HTML，避免大 payload）
-export function listSessions() {
+// 按访客标识过滤：不同浏览器（访客）只看到自己的会话，互不可见；
+// 未携带标识的请求一律返回空列表，杜绝历史数据泄露
+export function listSessions(owner) {
   return loadDb().sessions
+    .filter((s) => Boolean(owner) && s.owner === owner)
     .map(({ id, title, createdAt, updatedAt, messages, currentHtml, unread }) => ({
       id,
       title,
@@ -78,7 +81,7 @@ export function sanitizeHtml(html) {
   return t.slice(start, end).trim()
 }
 
-export function createSession() {
+export function createSession(owner) {
   const db = loadDb()
   const now = new Date().toISOString()
   const session = {
@@ -90,6 +93,7 @@ export function createSession() {
     currentHtml: null,
     unread: false,
   }
+  if (owner) session.owner = owner
   db.sessions.push(session)
   saveDb(db)
   return session

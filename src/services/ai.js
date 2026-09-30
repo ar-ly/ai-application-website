@@ -1,6 +1,23 @@
 // 前端服务层：SSE 流式生成 + 会话管理 + 文件上传 + 指令优化。
 // DeepSeek 的真实地址与 API Key 都保存在后端，浏览器中不可见。
 
+// 匿名访客标识：同一浏览器固定不变，随请求头发给后端，
+// 用于会话隔离——不同访客打开站点只能看到自己的历史会话
+function ownerId() {
+  try {
+    let id = localStorage.getItem('aib-owner-id')
+    if (!id) {
+      id = 'v' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
+      localStorage.setItem('aib-owner-id', id)
+    }
+    return id
+  } catch {
+    return 'vanon'
+  }
+}
+
+const ownerHeaders = () => ({ 'x-owner-id': ownerId() })
+
 /**
  * 流式生成应用。事件流：meta → delta* → done | partial | error
  * 停止生成请调用 stopGeneration(taskId)（不要中断 fetch，否则收不到部分成果）。
@@ -22,7 +39,7 @@ export async function generateAppStream({
   try {
     res = await fetch('/api/generate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...ownerHeaders() },
       body: JSON.stringify({ sessionId, prompt, attachments }),
       signal,
     })
@@ -132,7 +149,7 @@ export async function refinePrompt(prompt) {
 
 // ---------- 会话管理 ----------
 export async function listSessions() {
-  const res = await fetch('/api/sessions')
+  const res = await fetch('/api/sessions', { headers: ownerHeaders() })
   if (!res.ok) throw new Error('获取会话列表失败。')
   const data = await res.json()
   return data.sessions || []
@@ -146,7 +163,7 @@ export async function fetchSession(id) {
 }
 
 export async function createSessionApi() {
-  const res = await fetch('/api/sessions', { method: 'POST' })
+  const res = await fetch('/api/sessions', { method: 'POST', headers: ownerHeaders() })
   if (!res.ok) throw new Error('新建会话失败。')
   return res.json()
 }

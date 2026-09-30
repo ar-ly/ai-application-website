@@ -135,12 +135,19 @@ const MAX_FILE_CHARS = 200_000 // 单个文件约 20 万字符
 const MAX_FILES_PER_REQUEST = 5
 
 // ---------- 会话管理 API ----------
+// 访客标识：前端 localStorage 生成并随请求头携带，
+// 不同浏览器（访客）只能看到自己的会话，互不可见
+function getOwnerId(req) {
+  const id = String(req.get('x-owner-id') || '').trim()
+  return id.slice(0, 64) || null
+}
+
 app.get('/api/sessions', (req, res) => {
-  res.json({ sessions: listSessions() })
+  res.json({ sessions: listSessions(getOwnerId(req)) })
 })
 
 app.post('/api/sessions', (req, res) => {
-  res.status(201).json(createSession())
+  res.status(201).json(createSession(getOwnerId(req)))
 })
 
 app.get('/api/sessions/:id', (req, res) => {
@@ -315,7 +322,7 @@ app.post('/api/generate', async (req, res) => {
   if (sessionId && !session) {
     return res.status(404).json({ error: '会话不存在或已被删除，请刷新页面后重试。' })
   }
-  if (!session) session = createSession()
+  if (!session) session = createSession(getOwnerId(req))
 
   // 组装送给模型的用户内容：附件材料 + 多轮上下文 + 本轮需求
   let userContent = prompt
