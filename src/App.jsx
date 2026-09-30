@@ -466,8 +466,42 @@ function AuthView({ onAuthed }) {
   const formValid = usernameValid && passwordValid && matchValid
 
   return (
-    <div className="h-screen w-screen flex items-center justify-center bg-appbg px-4">
-      <div className="w-full max-w-[360px] bg-panel border border-line rounded-2xl shadow-sm p-7">
+    <div className="h-screen w-screen flex items-center justify-center bg-appbg px-4 relative overflow-hidden font-cute">
+      {/* 背景装饰：暖橙圆润色块与星光，呼应"AI 生成应用"主题 */}
+      <div className="pointer-events-none absolute -top-32 -left-32 w-[26rem] h-[26rem] rounded-full bg-brand/10 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-40 -right-28 w-[30rem] h-[30rem] rounded-full bg-brand-soft blur-3xl" />
+      <div className="pointer-events-none absolute top-[12%] right-[14%] w-14 h-14 rounded-2xl bg-brand/15 rotate-12" />
+      <div className="pointer-events-none absolute top-[62%] left-[6%] w-8 h-8 rounded-full bg-brand/20" />
+      <div className="pointer-events-none absolute bottom-[12%] left-[24%] w-12 h-12 rounded-3xl bg-brand/10 -rotate-6" />
+      <div className="pointer-events-none absolute top-[16%] left-[32%] text-brand/40 text-2xl select-none">✦</div>
+      <div className="pointer-events-none absolute bottom-[22%] right-[9%] text-brand/30 text-xl select-none">✦</div>
+      <div className="pointer-events-none absolute top-[9%] right-[42%] text-brand/25 text-sm select-none">✦</div>
+
+      <div className="relative w-full max-w-[900px] flex flex-col lg:flex-row items-center gap-8 lg:gap-16">
+        {/* 左侧主题介绍：一句话说清这个网站能做什么 */}
+        <div className="hidden lg:block flex-1">
+          <div className="text-[34px] leading-tight text-ink font-bold">AI 应用构建器</div>
+          <p className="mt-3 text-[15px] text-dim">用一句话，把你的想法变成能玩的网页应用 ✨</p>
+          <div className="mt-7 space-y-3.5">
+            {[
+              ['💬', '说一句话，AI 帮你生成完整应用'],
+              ['🎮', '生成即可玩，支持修改与版本回滚'],
+              ['☁️', '登录账号，作品云端保存不丢失'],
+            ].map(([icon, text]) => (
+              <div key={text} className="flex items-center gap-3">
+                <span className="w-9 h-9 rounded-2xl bg-panel border border-line shadow-sm flex items-center justify-center text-[16px]">
+                  {icon}
+                </span>
+                <span className="text-[14px] text-ink/90">{text}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 小屏幕一行简介 */}
+        <p className="lg:hidden text-[13px] text-dim">✨ 用 AI 一句话生成网页应用，登录后开始创作</p>
+
+        <div className="w-full max-w-[360px] bg-panel border border-line rounded-3xl shadow-sm p-7">
         <div className="flex items-center gap-2 mb-1">
           <span className="w-2.5 h-2.5 rounded-full bg-brand shadow-sm" />
           <span className="text-ink font-semibold text-[15px]">AI 应用构建器</span>
@@ -585,7 +619,36 @@ function AuthView({ onAuthed }) {
           </form>
         )}
 
-        <p className="text-[10px] text-dim/70 mt-4 leading-relaxed">
+        {/* 注册 / 登录引导 */}
+        {mode === 'login' ? (
+          <p className="text-[12px] text-dim mt-4 text-center">
+            还没有账号？
+            <button
+              onClick={() => {
+                setMode('register')
+                setError('')
+              }}
+              className="text-brand font-medium hover:underline ml-1"
+            >
+              去注册 →
+            </button>
+          </p>
+        ) : (
+          <p className="text-[12px] text-dim mt-4 text-center">
+            已有账号？
+            <button
+              onClick={() => {
+                setMode('login')
+                setError('')
+              }}
+              className="text-brand font-medium hover:underline ml-1"
+            >
+              去登录 →
+            </button>
+          </p>
+        )}
+
+        <p className="text-[10px] text-dim/70 mt-3 leading-relaxed">
           密码加密存储于云端数据库，历史记录跟随账号保存。
         </p>
         <p className="text-[10px] text-dim/70 mt-1 leading-relaxed">
@@ -593,6 +656,7 @@ function AuthView({ onAuthed }) {
             ? '提醒：这是演示站点，忘记用户名或密码将无法找回；云端数据可能随站点维护重置，请勿存放重要信息。'
             : '演示站点不支持找回密码，如忘记账号密码将无法进入。'}
         </p>
+        </div>
       </div>
     </div>
   )

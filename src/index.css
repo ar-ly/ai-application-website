@@ -1,3 +1,5 @@
+@import url('https://cdn.jsdelivr.net/npm/lxgw-wenkai-screen-webfont@1.7.0/style.css');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -49,6 +51,12 @@
 }
 
 @layer utilities {
+  /* 圆润可爱字体：霞鹜文楷屏幕版（jsdelivr 分包加载，失败时回退系统圆润字体） */
+  .font-cute {
+    font-family: 'LXGW WenKai Screen', ui-rounded, 'PingFang SC', 'Hiragino Sans GB',
+      'Microsoft YaHei', sans-serif;
+  }
+
   /* 自定义滚动条：跟随主题 */
   .scroll-thin::-webkit-scrollbar {
     width: 8px;
