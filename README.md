@@ -39,7 +39,7 @@ npm install
 # 配置环境变量（在项目根目录创建 .env 文件）
 # LLM_API_KEY=your_key_here               # 大模型 API Key（必填：真实 AI 生成）
 # LLM_API_URL=https://open.bigmodel.cn/api/paas/v4/chat/completions  # 可选：默认 DeepSeek
-# LLM_MODEL=glm-4-flash                   # 可选：模型名，默认 deepseek-chat
+# LLM_MODEL=glm-4.5-flash                 # 可选：模型名，默认 deepseek-chat
 # DATABASE_URL=postgresql://...neon.tech/neondb?sslmode=require   # Neon 云数据库
 # AUTH_SECRET=any_random_string           # 令牌签名密钥
 
@@ -63,7 +63,7 @@ npm start
    - `AUTH_SECRET`（任意随机字符串）
    - `PORT=3001`
    - AI 生成按需选择其一：
-     - 智谱 GLM（个人免费）：`LLM_API_URL=https://open.bigmodel.cn/api/paas/v4/chat/completions`、`LLM_MODEL=glm-4-flash`、`LLM_API_KEY`（在 https://open.bigmodel.cn 创建）
+     - 智谱 GLM（个人免费）：`LLM_API_URL=https://open.bigmodel.cn/api/paas/v4/chat/completions`、`LLM_MODEL=glm-4.5-flash`、`LLM_API_KEY`（在 https://bigmodel.cn/usercenter/proj-mgmt/apikeys 创建）
      - DeepSeek：仅设置 `LLM_API_KEY=<DeepSeek Key>`
      - 演示模式：设置 `MOCK_MODE=true`（详见下文；未配置任何 Key 时也会自动启用）
 5. 部署后获得公开访问链接
