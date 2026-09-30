@@ -354,6 +354,9 @@ function WelcomePanel({ suggestions, onPick, onRefresh }) {
       <p className="text-xs text-dim mt-1.5">
         描述你的需求，或从下面推荐中挑选一个开始
       </p>
+      <p className="text-[11px] text-dim/70 mt-1">
+        历史记录保存在当前浏览器中，仅自己可见；长时间无人访问后演示服务会自动重置记录
+      </p>
 
       {suggestions.length > 0 && (
         <div className="grid grid-cols-2 gap-2.5 mt-6 w-full">
