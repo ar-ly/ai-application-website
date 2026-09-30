@@ -403,6 +403,9 @@ function AuthView({ onAuthed }) {
   const [password2, setPassword2] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  // 注册成功但密码强度低：先展示风险提示，确认后进入
+  const [weakWarning, setWeakWarning] = useState('')
+  const pendingNameRef = useRef('')
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -417,22 +420,42 @@ function AuthView({ onAuthed }) {
     }
     setBusy(true)
     try {
+      let name = username.trim()
       if (mode === 'register') {
-        await registerApi(username.trim(), password)
+        const data = await registerApi(username.trim(), password)
+        if (data.weak && data.warning) {
+          // 弱密码：账号已创建，展示风险提示，用户确认后进入
+          pendingNameRef.current = name
+          setWeakWarning(data.warning)
+          setBusy(false)
+          return
+        }
       } else {
         await loginApi(username.trim(), password)
       }
       try {
-        localStorage.setItem('aib-username', username.trim())
+        localStorage.setItem('aib-username', name)
       } catch {
         /* 忽略 */
       }
-      onAuthed(username.trim())
+      onAuthed(name)
     } catch (err) {
       setError(err?.message || '操作失败，请稍后重试。')
     } finally {
       setBusy(false)
     }
+  }
+
+  // 弱密码风险确认后继续进入主界面
+  function confirmWeak() {
+    const name = pendingNameRef.current
+    try {
+      localStorage.setItem('aib-username', name)
+    } catch {
+      /* 忽略 */
+    }
+    setWeakWarning('')
+    onAuthed(name)
   }
 
   return (
@@ -467,13 +490,26 @@ function AuthView({ onAuthed }) {
           ))}
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-3">
+        {weakWarning ? (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+            <p className="text-[13px] font-medium text-amber-800 mb-1">密码强度提示</p>
+            <p className="text-[12px] text-amber-700 leading-relaxed">{weakWarning}</p>
+            <button
+              onClick={confirmWeak}
+              className="mt-3 w-full py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[13px] font-medium transition-colors"
+            >
+              知道了，继续使用
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-3">
           <div>
             <label className="block text-[11px] text-dim mb-1">用户名</label>
             <input
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="2~20 位字母、数字或中文"
+              placeholder="3~16 位，字母 / 数字 / _ / -"
+              maxLength={16}
               className="w-full px-3 py-2 rounded-lg bg-inset border border-line text-[13px] text-ink placeholder:text-dim/60 focus:outline-none focus:border-brand"
               autoComplete="username"
             />
@@ -484,7 +520,8 @@ function AuthView({ onAuthed }) {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="至少 6 位"
+              placeholder="6~20 位"
+              maxLength={20}
               className="w-full px-3 py-2 rounded-lg bg-inset border border-line text-[13px] text-ink placeholder:text-dim/60 focus:outline-none focus:border-brand"
               autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             />
@@ -512,10 +549,14 @@ function AuthView({ onAuthed }) {
           >
             {busy ? '请稍候…' : mode === 'login' ? '登录' : '注册并开始'}
           </button>
-        </form>
+          </form>
+        )}
 
-        <p className="text-[10px] text-dim/70 mt-4 text-center">
-          密码加密存储于云端数据库，历史记录跟随账号保存
+        <p className="text-[10px] text-dim/70 mt-4 leading-relaxed">
+          密码加密存储于云端数据库，历史记录跟随账号保存。
+          {mode === 'register'
+            ? '提醒：这是演示站点，忘记用户名或密码将无法找回；云端数据可能随站点维护重置，请勿存放重要信息。'
+            : '演示站点不支持找回密码，如忘记账号密码将无法进入。'}
         </p>
       </div>
     </div>

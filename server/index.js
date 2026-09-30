@@ -157,9 +157,26 @@ function requireAuth(req, res, next) {
   next()
 }
 
-const USERNAME_RE = /^[\u4e00-\u9fa5\w-]{2,20}$/
+const USERNAME_RE = /^[A-Za-z0-9_-]{3,16}$/
+const PASSWORD_MIN = 6
+const PASSWORD_MAX = 20
 
-// 注册：创建账号并直接返回登录令牌
+// 弱密码判定：常见弱口令、同字符重复、连续数字（允许注册，前端展示风险提示）
+function isWeakPassword(pwd) {
+  const common = [
+    '123456', '1234567', '12345678', '123456789', '1234567890', '0123456789',
+    '654321', '123321', '112233', '111222', '666666', '888888', '000000',
+    'abc123', 'a123456', 'aa123456', 'qwerty', 'qwertyuiop', 'asdfgh',
+    'password', 'password1', 'admin123', 'iloveyou', 'abcdef', 'abcdefg',
+  ]
+  const p = pwd.toLowerCase()
+  if (common.includes(p)) return true
+  if (/^(.)\1+$/.test(pwd)) return true // 全部同一字符
+  if (/^(?:012|123|234|345|456|567|678|789|987|876|765|654|543|432|321)+$/.test(pwd)) return true // 纯连续数字
+  return false
+}
+
+// 注册：创建账号并直接返回登录令牌；弱密码不拦截，返回 weak 标志由前端提示
 app.post('/api/auth/register', async (req, res) => {
   if (!dbReady) {
     return res.status(500).json({ error: '服务器未配置 DATABASE_URL（Neon 数据库），请联系部署者。' })
@@ -167,17 +184,23 @@ app.post('/api/auth/register', async (req, res) => {
   const username = String(req.body?.username || '').trim()
   const password = String(req.body?.password || '')
   if (!USERNAME_RE.test(username)) {
-    return res.status(400).json({ error: '用户名需为 2~20 位字母、数字、下划线、中划线或中文。' })
+    return res.status(400).json({ error: '用户名需为 3~16 位，仅支持字母、数字、下划线或中划线。' })
   }
-  if (password.length < 6 || password.length > 64) {
-    return res.status(400).json({ error: '密码长度需在 6~64 位之间。' })
+  if (password.length < PASSWORD_MIN || password.length > PASSWORD_MAX) {
+    return res.status(400).json({ error: `密码长度需在 ${PASSWORD_MIN}~${PASSWORD_MAX} 位之间。` })
   }
   try {
     if (await findUserByUsername(username)) {
       return res.status(409).json({ error: '该用户名已被注册，请换一个。' })
     }
     const user = await createUser(username, password)
-    res.status(201).json({ token: signToken(user.id), user: { id: user.id, username: user.username } })
+    const weak = isWeakPassword(password)
+    res.status(201).json({
+      token: signToken(user.id),
+      user: { id: user.id, username: user.username },
+      weak,
+      warning: weak ? '你的密码较为简单，存在被猜解的风险。演示环境可继续使用，正式产品建议包含字母、数字和符号的组合。' : null,
+    })
   } catch (err) {
     console.error('[auth/register]', err.message)
     res.status(500).json({ error: '注册失败，请稍后重试。' })
