@@ -1358,7 +1358,7 @@ export default function App() {
         </div>
 
         <footer className="border-t border-line px-4 py-2.5 text-[10px] text-dim">
-          deepseek-chat · v0.9.0
+          {streamModel || 'AI App Builder'} · v0.9.1
         </footer>
       </aside>
 

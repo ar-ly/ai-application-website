@@ -8,7 +8,7 @@
 |---|---|
 | 前端 | React 18 + Vite + Tailwind CSS |
 | 后端 | Express (Node.js) |
-| AI | DeepSeek API（支持流式输出与自动续写） |
+| AI | OpenAI 兼容接口（支持智谱 GLM / DeepSeek / Kimi 等，环境变量一键切换） |
 | 数据库 | Neon PostgreSQL（云端持久化，免运维） |
 | 鉴权 | scrypt 加盐密码哈希 + HMAC 签名令牌（30 天有效期） |
 | 部署 | Render / Railway（支持从公开 Git 仓库一键部署） |
@@ -37,7 +37,9 @@
 npm install
 
 # 配置环境变量（在项目根目录创建 .env 文件）
-# DEEPSEEK_API_KEY=your_key_here          # 可选：真实 AI 生成
+# LLM_API_KEY=your_key_here               # 大模型 API Key（必填：真实 AI 生成）
+# LLM_API_URL=https://open.bigmodel.cn/api/paas/v4/chat/completions  # 可选：默认 DeepSeek
+# LLM_MODEL=glm-4-flash                   # 可选：模型名，默认 deepseek-chat
 # DATABASE_URL=postgresql://...neon.tech/neondb?sslmode=require   # Neon 云数据库
 # AUTH_SECRET=any_random_string           # 令牌签名密钥
 
@@ -59,8 +61,11 @@ npm start
 4. 设置环境变量：
    - `DATABASE_URL`（Neon 连接字符串，见 https://neon.com ）
    - `AUTH_SECRET`（任意随机字符串）
-   - `MOCK_MODE=true`（启用演示模式，详见下文）
    - `PORT=3001`
+   - AI 生成按需选择其一：
+     - 智谱 GLM（个人免费）：`LLM_API_URL=https://open.bigmodel.cn/api/paas/v4/chat/completions`、`LLM_MODEL=glm-4-flash`、`LLM_API_KEY`（在 https://open.bigmodel.cn 创建）
+     - DeepSeek：仅设置 `LLM_API_KEY=<DeepSeek Key>`
+     - 演示模式：设置 `MOCK_MODE=true`（详见下文；未配置任何 Key 时也会自动启用）
 5. 部署后获得公开访问链接
 
 ## 演示模式（Mock Mode）
@@ -71,7 +76,7 @@ npm start
 - 功能回归测试与 CI 流水线
 - 前端交互的独立开发与调试
 
-代码中 DeepSeek 流式接入逻辑完整保留：配置 `DEEPSEEK_API_KEY` 并移除 `MOCK_MODE` 变量，即可切换为真实 AI 生成模式。
+代码中大模型流式接入逻辑完整保留：配置 `LLM_API_KEY`（可选配 `LLM_API_URL` / `LLM_MODEL` 切换厂商与模型）并移除 `MOCK_MODE`，即可切换为真实 AI 生成模式。
 
 ## 项目结构
 

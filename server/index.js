@@ -1,4 +1,4 @@
-// 后端服务：DeepSeek 代理（SSE 流式）+ 会话持久化 + 生产模式静态托管。
+// 后端服务：大模型代理（SSE 流式）+ 会话持久化 + 生产模式静态托管。
 // 开发：npm run server（3001，前端走 Vite 代理）
 // 生产：npm run build 后 npm start（单服务同时托管 dist 与 /api）
 import express from 'express'
@@ -39,18 +39,20 @@ app.use(express.json({ limit: '6mb' }))
 
 const PORT = process.env.PORT || 3001
 const DIST_DIR = path.resolve(__dirname, '..', 'dist')
-const DEEPSEEK_API_URL =
-  process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions'
-const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat'
+// 大模型接入：统一走 OpenAI 兼容接口，按环境变量切换任意厂商（智谱/DeepSeek/Kimi 等）
+// LLM_API_URL / LLM_MODEL / LLM_API_KEY 优先；未设置时回落到 DEEPSEEK_* 兼容旧配置
+const LLM_API_URL = process.env.LLM_API_URL || 'https://api.deepseek.com/v1/chat/completions'
+const LLM_MODEL = process.env.LLM_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-chat'
+const LLM_API_KEY = process.env.LLM_API_KEY || process.env.DEEPSEEK_API_KEY || ''
 const IDLE_TIMEOUT = 120_000 // 流式：相邻数据块之间的最大等待时间
 
 // ---------- Mock 演示模式 ----------
-// 设 MOCK_MODE=true 时，所有 /api/generate 请求不走 DeepSeek，
+// 设 MOCK_MODE=true 时，所有 /api/generate 请求不调用大模型，
 // 从预置的已验证产物中按关键词匹配返回，模拟 SSE 流式输出。
 // 部署演示环境零 API 成本、永不失败；关闭后恢复正常 AI 调用。
 const MOCK_MODE = process.env.MOCK_MODE === 'true'
 // 显式设置 MOCK_MODE=true，或未配置 API Key（线上演示环境）时，自动进入演示模式
-const MOCK_ACTIVE = MOCK_MODE || !process.env.DEEPSEEK_API_KEY
+const MOCK_ACTIVE = MOCK_MODE || !LLM_API_KEY
 const MOCK_DIR = path.resolve(__dirname, 'mock-products')
 
 // 关键词 -> 预置文件名（mock-products 目录下）
@@ -345,7 +347,7 @@ app.post('/api/refine-prompt', async (req, res) => {
   const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : ''
   if (!prompt) return res.status(400).json({ error: '请先输入你的初步想法。' })
 
-  const apiKey = process.env.DEEPSEEK_API_KEY
+  const apiKey = LLM_API_KEY
 
   // 演示模式：本地模板扩写，不调用外部 API，保证线上功能闭环
   if (!apiKey || MOCK_ACTIVE) {
@@ -362,14 +364,14 @@ app.post('/api/refine-prompt', async (req, res) => {
   const timer = setTimeout(() => controller.abort(), 60_000)
   let upstream
   try {
-    upstream = await fetch(DEEPSEEK_API_URL, {
+    upstream = await fetch(LLM_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: DEEPSEEK_MODEL,
+        model: LLM_MODEL,
         messages: [
           { role: 'system', content: REFINE_PROMPT },
           { role: 'user', content: prompt },
@@ -386,7 +388,7 @@ app.post('/api/refine-prompt', async (req, res) => {
       error:
         err.name === 'AbortError'
           ? '指令优化超时，请稍后重试或直接生成。'
-          : `无法连接 DeepSeek API：${err.message}`,
+          : `无法连接 AI 服务：${err.message}`,
     })
   }
   clearTimeout(timer)
@@ -405,8 +407,8 @@ app.post('/api/refine-prompt', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    model: DEEPSEEK_MODEL,
-    keyConfigured: Boolean(process.env.DEEPSEEK_API_KEY),
+    model: LLM_MODEL,
+    keyConfigured: Boolean(LLM_API_KEY),
     mockMode: MOCK_ACTIVE,
     dbReady,
   })
@@ -441,12 +443,12 @@ app.post('/api/generate', requireAuth, async (req, res) => {
     return res.status(400).json({ error: `一次最多附带 ${MAX_FILES_PER_REQUEST} 个文件。` })
   }
 
-  const apiKey = process.env.DEEPSEEK_API_KEY
+  const apiKey = LLM_API_KEY
   // 演示模式下不需要 API Key（未配置时自动降级为演示模式）
   if (!apiKey && !MOCK_ACTIVE) {
     return res
       .status(500)
-      .json({ error: '服务器未配置 DEEPSEEK_API_KEY，请在项目根目录 .env 中设置后重启后端。' })
+      .json({ error: '服务器未配置 LLM_API_KEY，请设置大模型 API Key 环境变量后重启后端。' })
   }
 
   let session = null
@@ -504,7 +506,7 @@ app.post('/api/generate', requireAuth, async (req, res) => {
   }
 
   const taskId = newId()
-  send({ type: 'meta', model: DEEPSEEK_MODEL, sessionId: session.id, taskId })
+  send({ type: 'meta', model: LLM_MODEL, sessionId: session.id, taskId })
 
   // ---------- Mock 演示模式 ----------
   if (MOCK_ACTIVE) {
@@ -578,14 +580,14 @@ app.post('/api/generate', requireAuth, async (req, res) => {
   const callUpstream = async (messages) => {
     let resp
     try {
-      resp = await fetch(DEEPSEEK_API_URL, {
+      resp = await fetch(LLM_API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: DEEPSEEK_MODEL,
+          model: LLM_MODEL,
           messages,
           temperature: 0.7,
           max_tokens: 8192,
@@ -601,22 +603,22 @@ app.post('/api/generate', requireAuth, async (req, res) => {
       const data = await resp.json().catch(() => null)
       const detail = data?.error?.message || data?.message || '上游接口返回了非预期的错误。'
       const statusMap = {
-        400: `DeepSeek 拒绝了请求（400），可能是上下文过长（附件太大）。详情：${detail}`,
-        401: `DeepSeek 鉴权失败（401）：API Key 无效或已过期。详情：${detail}`,
-        402: `DeepSeek 账户余额不足（402），请充值后重试。详情：${detail}`,
-        404: `DeepSeek 接口或模型不存在（404）。详情：${detail}`,
-        429: `请求 DeepSeek 过于频繁或额度不足（429）。详情：${detail}`,
+        400: `AI 服务拒绝了请求（400），可能是上下文过长（附件太大）。详情：${detail}`,
+        401: `AI 服务鉴权失败（401）：API Key 无效或已过期。详情：${detail}`,
+        402: `AI 服务账户余额不足（402），请充值后重试。详情：${detail}`,
+        404: `AI 服务接口或模型不存在（404），请检查 LLM_API_URL 与 LLM_MODEL 配置。详情：${detail}`,
+        429: `请求 AI 服务过于频繁或额度不足（429）。详情：${detail}`,
       }
       return {
         httpError:
           statusMap[resp.status] ||
-          `DeepSeek 返回错误（HTTP ${resp.status}）。详情：${detail}`,
+          `AI 服务返回错误（HTTP ${resp.status}）。详情：${detail}`,
       }
     }
 
     let text = ''
     let finishReason = null
-    let model = DEEPSEEK_MODEL
+    let model = LLM_MODEL
     const r = resp.body.getReader()
     const dec = new TextDecoder()
     let buf = ''
@@ -669,7 +671,7 @@ app.post('/api/generate', requireAuth, async (req, res) => {
     { role: 'user', content: userContent },
   ]
   let full = ''
-  let upstreamModel = DEEPSEEK_MODEL
+  let upstreamModel = LLM_MODEL
   let readError = null
   let fatalError = null
 
@@ -683,8 +685,8 @@ app.post('/api/generate', requireAuth, async (req, res) => {
           type: 'error',
           error:
             r.connError.name === 'AbortError'
-              ? `请求 DeepSeek 超时（超过 ${IDLE_TIMEOUT / 1000} 秒无响应），请稍后重试。`
-              : `后端无法连接 DeepSeek API：${r.connError.message}。请检查服务器网络或代理设置。`,
+              ? `请求 AI 服务超时（超过 ${IDLE_TIMEOUT / 1000} 秒无响应），请稍后重试。`
+              : `后端无法连接 AI 服务：${r.connError.message}。请检查服务器网络或代理设置。`,
         })
         res.end()
       }
@@ -747,7 +749,7 @@ app.post('/api/generate', requireAuth, async (req, res) => {
         error:
           readError.name === 'AbortError'
             ? '生成超时或被中止，请稍后重试。'
-            : `读取 DeepSeek 流式响应失败：${readError.message}`,
+            : `读取 AI 流式响应失败：${readError.message}`,
       })
       res.end()
     }
@@ -856,7 +858,7 @@ if (fs.existsSync(DIST_DIR)) {
 app.listen(PORT, () => {
   console.log(`[server] 服务已启动: http://localhost:${PORT}`)
   console.log(
-    `[server] 使用模型: ${DEEPSEEK_MODEL} | Key 已配置: ${Boolean(process.env.DEEPSEEK_API_KEY)}`,
+    `[server] 使用模型: ${LLM_MODEL} | Key 已配置: ${Boolean(LLM_API_KEY)} | 演示模式: ${MOCK_ACTIVE}`,
   )
   console.log(
     `[server] 静态托管: ${
