@@ -458,6 +458,13 @@ function AuthView({ onAuthed }) {
     onAuthed(name)
   }
 
+  // 实时校验（注册模式）：用户名 3~16 位（字母/数字/下划线/中划线）；密码 6~20 位且不含空格
+  // 登录模式只要求非空，避免历史账号被新规则挡在门外
+  const usernameValid = mode === 'register' ? /^[A-Za-z0-9_-]{3,16}$/.test(username) : username.trim().length > 0
+  const passwordValid = mode === 'register' ? /^\S{6,20}$/.test(password) : password.length > 0
+  const matchValid = mode === 'login' || (password2.length > 0 && password === password2)
+  const formValid = usernameValid && passwordValid && matchValid
+
   return (
     <div className="h-screen w-screen flex items-center justify-center bg-appbg px-4">
       <div className="w-full max-w-[360px] bg-panel border border-line rounded-2xl shadow-sm p-7">
@@ -510,9 +517,18 @@ function AuthView({ onAuthed }) {
               onChange={(e) => setUsername(e.target.value)}
               placeholder="3~16 位，字母 / 数字 / _ / -"
               maxLength={16}
-              className="w-full px-3 py-2 rounded-lg bg-inset border border-line text-[13px] text-ink placeholder:text-dim/60 focus:outline-none focus:border-brand"
+              className={`w-full px-3 py-2 rounded-lg bg-inset border text-[13px] text-ink placeholder:text-dim/60 focus:outline-none ${
+                username && !usernameValid
+                  ? 'border-red-400 focus:border-red-400'
+                  : 'border-line focus:border-brand'
+              }`}
               autoComplete="username"
             />
+            <p className={`text-[10px] mt-1 ${username && !usernameValid ? 'text-red-500' : 'text-dim/60'}`}>
+              {username && !usernameValid
+                ? '用户名需为 3~16 位，仅限字母、数字、下划线或中划线，不能含空格'
+                : '3~16 位，仅限字母、数字、下划线或中划线'}
+            </p>
           </div>
           <div>
             <label className="block text-[11px] text-dim mb-1">密码</label>
@@ -521,10 +537,19 @@ function AuthView({ onAuthed }) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="6~20 位"
-              maxLength={20}
-              className="w-full px-3 py-2 rounded-lg bg-inset border border-line text-[13px] text-ink placeholder:text-dim/60 focus:outline-none focus:border-brand"
+              maxLength={mode === 'login' ? undefined : 20}
+              className={`w-full px-3 py-2 rounded-lg bg-inset border text-[13px] text-ink placeholder:text-dim/60 focus:outline-none ${
+                password && !passwordValid
+                  ? 'border-red-400 focus:border-red-400'
+                  : 'border-line focus:border-brand'
+              }`}
               autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             />
+            <p className={`text-[10px] mt-1 ${password && !passwordValid ? 'text-red-500' : 'text-dim/60'}`}>
+              {password && !passwordValid
+                ? '密码需为 6~20 位，不能包含空格'
+                : '6~20 位，可含字母、数字与符号（不能含空格）'}
+            </p>
           </div>
           {mode === 'register' && (
             <div>
@@ -534,9 +559,17 @@ function AuthView({ onAuthed }) {
                 value={password2}
                 onChange={(e) => setPassword2(e.target.value)}
                 placeholder="再输入一次密码"
-                className="w-full px-3 py-2 rounded-lg bg-inset border border-line text-[13px] text-ink placeholder:text-dim/60 focus:outline-none focus:border-brand"
+                maxLength={20}
+                className={`w-full px-3 py-2 rounded-lg bg-inset border text-[13px] text-ink placeholder:text-dim/60 focus:outline-none ${
+                  password2 && !matchValid
+                    ? 'border-red-400 focus:border-red-400'
+                    : 'border-line focus:border-brand'
+                }`}
                 autoComplete="new-password"
               />
+              <p className={`text-[10px] mt-1 ${password2 && !matchValid ? 'text-red-500' : 'text-dim/60'}`}>
+                {password2 && !matchValid ? '两次输入的密码不一致' : '再次输入相同的密码'}
+              </p>
             </div>
           )}
 
@@ -544,8 +577,8 @@ function AuthView({ onAuthed }) {
 
           <button
             type="submit"
-            disabled={busy}
-            className="w-full py-2.5 rounded-xl bg-brand hover:bg-brandHover disabled:opacity-60 text-white text-sm font-medium shadow-sm transition-colors"
+            disabled={busy || !formValid}
+            className="w-full py-2.5 rounded-xl bg-brand hover:bg-brandHover disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium shadow-sm transition-colors"
           >
             {busy ? '请稍候…' : mode === 'login' ? '登录' : '注册并开始'}
           </button>
@@ -554,6 +587,8 @@ function AuthView({ onAuthed }) {
 
         <p className="text-[10px] text-dim/70 mt-4 leading-relaxed">
           密码加密存储于云端数据库，历史记录跟随账号保存。
+        </p>
+        <p className="text-[10px] text-dim/70 mt-1 leading-relaxed">
           {mode === 'register'
             ? '提醒：这是演示站点，忘记用户名或密码将无法找回；云端数据可能随站点维护重置，请勿存放重要信息。'
             : '演示站点不支持找回密码，如忘记账号密码将无法进入。'}
