@@ -714,6 +714,9 @@ export default function App() {
 
   const bootedRef = useRef(false)
   const scrollRef = useRef(null)
+  // 贴底跟随标记：用户滚动位置距底部 <80px 视为“在看最新消息”，流式更新时才自动跟随；
+  // 用户上滑查看历史时暂停跟随，滚回底部自动恢复。切换会话时强制恢复贴底。
+  const stickBottomRef = useRef(true)
   const fileInputRef = useRef(null)
   const taskIdRef = useRef('') // 当前生成任务 id（用于停止）
   const queueRef = useRef([]) // 排队的生成请求 [{sid, prompt, attachments, msgUid}]
@@ -775,11 +778,18 @@ export default function App() {
     }
   }, [theme])
 
-  // 聊天区自动滚到底
+  // 聊天区自动滚到底（贴底跟随）：仅在用户本就位于底部附近时跟随流式输出，
+  // 用户上滑查看历史记录时不再强制拉回底部
   useEffect(() => {
     const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    if (el && stickBottomRef.current) el.scrollTop = el.scrollHeight
   }, [messages, isGenerating, streamText])
+
+  // 滚动监听：实时更新贴底标记（自动滚到底后 distance≈0，标记保持 true）
+  const handleChatScroll = (e) => {
+    const el = e.currentTarget
+    stickBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  }
 
   // LRU 淘汰：previewOrder 更新后，移除超出上限的保活 iframe
   useEffect(() => {
@@ -898,6 +908,7 @@ export default function App() {
     const s = await fetchSession(id)
     setSessionId(s.id)
     activeSidRef.current = s.id
+    stickBottomRef.current = true // 切换会话直接展示最新消息
     setMessages(
       s.messages.length
         ? s.messages.map((m) => ({
@@ -924,6 +935,7 @@ export default function App() {
       const s = await createSessionApi()
       setSessionId(s.id)
       activeSidRef.current = s.id
+      stickBottomRef.current = true
       setMessages([])
       setAttachments([])
       const list = await refreshSessions()
@@ -1377,7 +1389,7 @@ export default function App() {
           <span className="text-[11px] text-dim shrink-0 ml-2">会话自动保存</span>
         </header>
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-thin px-5 py-5">
+        <div ref={scrollRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto scroll-thin px-5 py-5">
           {isEmpty ? (
             <WelcomePanel
               suggestions={suggestions}
