@@ -44,6 +44,9 @@ const DIST_DIR = path.resolve(__dirname, '..', 'dist')
 const LLM_API_URL = process.env.LLM_API_URL || 'https://api.deepseek.com/v1/chat/completions'
 const LLM_MODEL = process.env.LLM_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-chat'
 const LLM_API_KEY = process.env.LLM_API_KEY || process.env.DEEPSEEK_API_KEY || ''
+// 智谱 GLM-4.5+ 系列默认开启深度思考，思考内容会挤占 max_tokens 导致正文被截断；
+// 生成 HTML 场景对 GLM 模型统一关闭思考（DeepSeek 等其他厂商无此参数，不受影响）
+const llmThinkingOff = () => (/glm/i.test(LLM_MODEL) ? { thinking: { type: 'disabled' } } : {})
 const IDLE_TIMEOUT = 120_000 // 流式：相邻数据块之间的最大等待时间
 
 // ---------- Mock 演示模式 ----------
@@ -379,6 +382,7 @@ app.post('/api/refine-prompt', async (req, res) => {
         temperature: 0.6,
         max_tokens: 900,
         stream: false,
+        ...llmThinkingOff(),
       }),
       signal: controller.signal,
     })
@@ -592,6 +596,7 @@ app.post('/api/generate', requireAuth, async (req, res) => {
           temperature: 0.7,
           max_tokens: 8192,
           stream: true,
+          ...llmThinkingOff(),
         }),
         signal: controller.signal,
       })
