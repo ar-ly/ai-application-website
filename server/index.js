@@ -42,6 +42,8 @@ const IDLE_TIMEOUT = 120_000 // 流式：相邻数据块之间的最大等待时
 // 从预置的已验证产物中按关键词匹配返回，模拟 SSE 流式输出。
 // 部署演示环境零 API 成本、永不失败；关闭后恢复正常 AI 调用。
 const MOCK_MODE = process.env.MOCK_MODE === 'true'
+// 显式设置 MOCK_MODE=true，或未配置 API Key（线上演示环境）时，自动进入演示模式
+const MOCK_ACTIVE = MOCK_MODE || !process.env.DEEPSEEK_API_KEY
 const MOCK_DIR = path.resolve(__dirname, 'mock-products')
 
 // 关键词 -> 预置文件名（mock-products 目录下）
@@ -207,10 +209,16 @@ app.post('/api/refine-prompt', async (req, res) => {
   if (!prompt) return res.status(400).json({ error: '请先输入你的初步想法。' })
 
   const apiKey = process.env.DEEPSEEK_API_KEY
-  if (!apiKey) {
-    return res
-      .status(500)
-      .json({ error: '服务器未配置 DEEPSEEK_API_KEY，请在 .env 中设置后重启后端。' })
+
+  // 演示模式：本地模板扩写，不调用外部 API，保证线上功能闭环
+  if (!apiKey || MOCK_ACTIVE) {
+    const refined =
+      `请为我生成一个网页应用：${prompt}。` +
+      '要求：所有代码整合在单个 HTML 文件中，可直接在浏览器运行；' +
+      '界面采用明亮的浅色配色（暖白背景、暖橙色强调色），布局清晰、有适当留白和圆角；' +
+      '提供完整可用的核心交互功能，操作反馈及时；' +
+      '如包含规则或使用说明，用页面内的样式化组件展示。'
+    return res.json({ refined })
   }
 
   const controller = new AbortController()
@@ -262,6 +270,7 @@ app.get('/api/health', (req, res) => {
     ok: true,
     model: DEEPSEEK_MODEL,
     keyConfigured: Boolean(process.env.DEEPSEEK_API_KEY),
+    mockMode: MOCK_ACTIVE,
   })
 })
 
@@ -295,7 +304,8 @@ app.post('/api/generate', async (req, res) => {
   }
 
   const apiKey = process.env.DEEPSEEK_API_KEY
-  if (!apiKey) {
+  // 演示模式下不需要 API Key（未配置时自动降级为演示模式）
+  if (!apiKey && !MOCK_ACTIVE) {
     return res
       .status(500)
       .json({ error: '服务器未配置 DEEPSEEK_API_KEY，请在项目根目录 .env 中设置后重启后端。' })
@@ -354,7 +364,7 @@ app.post('/api/generate', async (req, res) => {
   send({ type: 'meta', model: DEEPSEEK_MODEL, sessionId: session.id, taskId })
 
   // ---------- Mock 演示模式 ----------
-  if (MOCK_MODE) {
+  if (MOCK_ACTIVE) {
     const matched = matchMockProduct(prompt)
     const html = loadMockProduct(matched.file)
     if (!html) {
