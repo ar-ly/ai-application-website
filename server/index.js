@@ -161,6 +161,34 @@ const USERNAME_RE = /^[A-Za-z0-9_-]{3,16}$/
 const PASSWORD_MIN = 6
 const PASSWORD_MAX = 20
 
+// 用户名安全审查：禁止违反法律法规、危害网络安全的名称
+// 覆盖政治敏感、恐怖主义、违法犯罪、色情低俗、仇恨歧视等类别
+const FORBIDDEN_PATTERNS = [
+  // 恐怖主义 / 极端组织
+  /isis|isil|塔利班|基地组织|极端主义|恐怖主义|恐怖组织|暴恐/i,
+  // 政治敏感（领导人姓名谐音、政治事件等，仅做基本拦截）
+  /习\s*近\s*平|毛\s*泽\s*东|邓\s*小\s*平|江\s*泽\s*民|胡\s*锦\s*涛|温\s*家\s*宝|李\s*克\s*强|习\s*大\s*大/i,
+  /六\s*四|天\s*安\s*门|法\s*轮\s*功|学\s*运|维\s*权\s*律\s*师|刘\s*晓\s*波/i,
+  /台\s*独|港\s*独|疆\s*独|藏\s*独|推\s*翻\s*政\s*权|颠\s*覆\s*国\s*家/i,
+  // 违法犯罪
+  /贩\s*毒|制\s*毒|洗\s*钱|诈\s*骗|黑\s*社\s*会|黑\s*帮|走\s*私|偷\s*渡|拐\s*卖/i,
+  /枪\s*支|弹\s*药|爆\s*炸\s*物|制\s*造\s*炸\s*弹|恐怖袭击|杀人方法|投毒/i,
+  // 色情低俗
+  /色\s*情|淫\s*秽|卖\s*淫|嫖\s*娼|裸\s*聊|av\s*女\s*优|porn|sex\s*cam|援\s*交/i,
+  // 仇恨歧视
+  /纳\s*粹|nazi|纳\.\*粹|法\s*西\s*斯|白\s*人\s*至\s*上|种族歧视|仇\s*外/i,
+  // 其他违规
+  /本\s*拉\s*登|拉\s*登|独\s*裁\s*者|反\s*人\s*类|邪\s*教|fuck|shit|sb\s*政\s*府/i,
+]
+
+function checkForbiddenUsername(username) {
+  const name = String(username || '')
+  for (const re of FORBIDDEN_PATTERNS) {
+    if (re.test(name)) return true
+  }
+  return false
+}
+
 // 弱密码判定：常见弱口令、同字符重复、连续数字（允许注册，前端展示风险提示）
 function isWeakPassword(pwd) {
   const common = [
@@ -185,6 +213,9 @@ app.post('/api/auth/register', async (req, res) => {
   const password = String(req.body?.password || '')
   if (!USERNAME_RE.test(username)) {
     return res.status(400).json({ error: '用户名需为 3~16 位，仅支持字母、数字、下划线或中划线。' })
+  }
+  if (checkForbiddenUsername(username)) {
+    return res.status(400).json({ error: '用户名包含违规内容，请更换一个。' })
   }
   if (password.length < PASSWORD_MIN || password.length > PASSWORD_MAX) {
     return res.status(400).json({ error: `密码长度需在 ${PASSWORD_MIN}~${PASSWORD_MAX} 位之间。` })
